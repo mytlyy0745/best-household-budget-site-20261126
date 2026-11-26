@@ -102,6 +102,29 @@ h2 { font-size: 22px; }
 .btn.small { padding: 7px 12px; font-size: 14px; }
 .btn.danger { background: var(--red); color: #fff; }
 
+/* Month pace strip */
+.pace {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.pace > div {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--amber);
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+.pace-label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.pace strong { display: block; font-family: var(--serif); font-size: 21px; color: var(--pine-dark); margin: 4px 0 2px; }
+.pace strong.pace-bad { color: var(--red); }
+.pace strong.pace-good { color: var(--green); }
+.pace .muted { font-size: 13px; }
+
+/* Goal projection line */
+.goal-proj { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
 /* Stat cards */
 .cards {
   display: grid;
@@ -240,6 +263,7 @@ input, select {
 @media (max-width: 720px) {
   .hero h1 { font-size: 30px; }
   .cards { grid-template-columns: 1fr 1fr; }
+  .pace { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .topbar { gap: 10px; padding: 10px 14px; }

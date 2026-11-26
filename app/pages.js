@@ -44,6 +44,14 @@ function pageDashboard(state) {
   const recent = [...state.transactions]
     .sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id)).slice(0, 5);
   const kindWord = { income: "Income", spending: "Spent", saving: "Saved" };
+  const pace = monthPace(state);
+  const paceWord = Math.abs(pace.pacePct) < 0.5 ? "right on pace"
+    : pace.pacePct > 0 ? `${pace.pacePct.toFixed(1)}% ahead of pace`
+    : `${Math.abs(pace.pacePct).toFixed(1)}% behind pace`;
+  const paceTone = pace.pacePct > 0.5 ? "pace-bad"
+    : pace.pacePct < -0.5 ? "pace-good" : "";
+  const daysWord = pace.daysLeft === 0 ? "November ends today"
+    : `${pace.daysLeft} day${pace.daysLeft === 1 ? "" : "s"} left in November`;
 
   return `
   <section class="hero">
@@ -51,6 +59,11 @@ function pageDashboard(state) {
     <h1>Left to spend <span id="hero-remaining">${money(totals.remaining)}</span></h1>
     <p class="hero-sub">Income ${money(totals.income)} − spending ${money(totals.spending)} − savings ${money(totals.saving)} — ${esc(heroNote)}</p>
     <p><a class="btn" href="#/transactions">Add a transaction</a> <a class="btn ghost" href="#/insights">See November in full</a></p>
+  </section>
+  <section class="pace" aria-label="How the month is pacing">
+    <div><span class="pace-label">Month</span><strong id="pace-days">${daysWord}</strong><span class="muted">Day ${pace.day} of ${pace.daysInMonth} · November 2026</span></div>
+    <div><span class="pace-label">Safe to spend</span><strong id="pace-safe">${money(pace.safePerDay)} a day</strong><span class="muted">from ${money(pace.remaining)} left</span></div>
+    <div><span class="pace-label">Pace</span><strong id="pace-word" class="${paceTone}">${paceWord}</strong><span class="muted">${money(pace.expected)} flexible spending expected by now — rent excluded</span></div>
   </section>
   <section class="cards">
     <div class="stat"><span class="stat-label">Income</span><strong id="stat-income">${money(totals.income)}</strong><span class="muted">5 paydays and extras</span></div>
@@ -168,10 +181,18 @@ function pageBudgets(state) {
   const rows = spendByCategory(state.transactions);
   const spentOf = (cat) => rows.find((r) => r.category === cat)?.cents || 0;
   const saved = sumKinds(state.transactions).saving;
+  const totalLimit = NEST_SEED.spendCategories
+    .reduce((sum, cat) => sum + (state.limits[cat] || 0), 0);
+  const totalSpent = rows.reduce((sum, r) => sum + r.cents, 0);
   return `
   <section class="panel">
     <h1>Budgets — ${esc(NEST_SEED.monthLabel)}</h1>
     <p>Monthly limits for the household. Change a limit and it sticks — limits are saved on this device.</p>
+    <div class="save-card">
+      <div class="snap-head"><span><b>All nine budgets</b> <span class="muted">— the month's limits taken together</span></span><span id="budgets-total">${money(totalSpent)} of ${money(totalLimit)}</span></div>
+      ${progressBar(100 * totalSpent / totalLimit, totalSpent > totalLimit ? "over" : "")}
+      <div class="snap-foot"><span>${pctOf(totalSpent, totalLimit)} of the month's limits used</span><span class="muted">${money(Math.max(0, totalLimit - totalSpent))} of headroom left</span></div>
+    </div>
     <div class="save-card">
       <div class="snap-head"><span><b>Savings target</b> <span class="muted">— the amount set aside each month</span></span><span>${money(saved)} of ${money(NEST_SEED.savingsTarget)}</span></div>
       ${progressBar(100 * saved / NEST_SEED.savingsTarget, "goal")}
@@ -199,16 +220,22 @@ function pageGoals(state) {
   <section class="panel">
     <h1>Savings goals</h1>
     <p>Every dollar has a job. Add funds to a goal and the ledger records it as a saving transaction automatically.</p>
-    ${state.goals.map((g) => `
+    ${state.goals.map((g) => {
+      const proj = goalProjection(g, state);
+      const projLine = proj.monthsLeft === 0 ? "Target reached — well done."
+        : proj.monthsLeft === null ? "Add funds to start the countdown."
+        : `About ${proj.monthsLeft} month${proj.monthsLeft === 1 ? "" : "s"} to go at the current pace (${money(proj.pace)} a month) — around ${proj.finishLabel}.`;
+      return `
       <div class="goal-card">
         <div class="snap-head"><span><b>${esc(g.name)}</b>${g.note ? ` <span class="muted">— ${esc(g.note)}</span>` : ""}</span><span id="goal-amt-${esc(g.id)}">${money(g.saved)} of ${money(g.target)}</span></div>
         ${progressBar(100 * g.saved / g.target, "goal")}
         <div class="snap-foot"><span>${pctOf(g.saved, g.target)} saved</span><span class="muted">${money(Math.max(0, g.target - g.saved))} to go</span></div>
+        <div class="goal-proj" id="goal-proj-${esc(g.id)}">${projLine}</div>
         <div class="fund-row">
           <label>Add funds ($) <input id="fund-${esc(g.id)}" type="number" min="1" step="1" placeholder="50"></label>
           <button class="btn small fund-add" data-goal="${esc(g.id)}">Add to ${esc(g.name)}</button>
         </div>
-      </div>`).join("")}
+      </div>`;}).join("")}
   </section>
   <section class="panel">
     <h2>Start a new goal</h2>
@@ -229,6 +256,11 @@ function pageInsights(state) {
   const rows = spendByCategory(state.transactions);
   const oct = NEST_SEED.october;
   const top = rows[0] || { category: "—", cents: 0 };
+  const weeks = weeklySpending(state.transactions);
+  const biggestWeek = weeks.reduce((a, b) => (b.cents > a.cents ? b : a), weeks[0]);
+  const weekNote = biggestWeek.label === "Nov 1–7"
+    ? `The biggest week was ${esc(biggestWeek.label)} at ${money(biggestWeek.cents)} — rent lands on the 1st, so the first week always runs hot. The other three weeks averaged ${money(Math.round((totals.spending - weeks[0].cents) / 3))} each.`
+    : `The biggest week was ${esc(biggestWeek.label)} at ${money(biggestWeek.cents)} — the other weeks averaged ${money(Math.round((totals.spending - biggestWeek.cents) / 3))} each.`;
   const over = NEST_SEED.spendCategories
     .map((cat) => ({ cat, spent: rows.find((r) => r.category === cat)?.cents || 0, limit: state.limits[cat] || 0 }))
     .filter((b) => b.spent > b.limit);
@@ -246,6 +278,11 @@ function pageInsights(state) {
     <h1>Insights — November vs October</h1>
     ${monthBars(totals, oct)}
     <p class="muted">Income ${changeLabel(totals.income, oct.income)} · spending ${changeLabel(totals.spending, oct.spending)} · savings ${changeLabel(totals.saving, oct.saving)} against October (${money(oct.income)} / ${money(oct.spending)} / ${money(oct.saving)}).</p>
+  </section>
+  <section class="panel">
+    <h2>Spending by week</h2>
+    ${weekBars(weeks)}
+    <p class="muted">${weekNote}</p>
   </section>
   <div class="two-col">
     <section class="panel">

@@ -44,7 +44,9 @@ function donutChart(rows, total) {
     `<ul class="legend">${legend}</ul></div>`;
 }
 
-/* Grouped bars comparing November with October for three measures. */
+/* Grouped bars comparing November with October for three measures.
+   The viewBox is taller than the drawing so the "% vs October" line
+   under each group is never clipped — it sits at y 242. */
 function monthBars(nov, oct) {
   const groups = [
     { label: "Income", now: nov.income, before: oct.income },
@@ -52,7 +54,7 @@ function monthBars(nov, oct) {
     { label: "Savings", now: nov.saving, before: oct.saving },
   ];
   const top = Math.max(...groups.flatMap((g) => [g.now, g.before]));
-  const W = 560, H = 240, base = 200, gap = 46;
+  const W = 560, H = 262, base = 200, gap = 46;
   const slot = (W - gap) / 3;
   const barW = 52;
   let bars = "";
@@ -70,4 +72,24 @@ function monthBars(nov, oct) {
   return `<svg viewBox="0 0 ${W} ${H}" class="bars" role="img" aria-label="November compared with October">` +
     `<line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="#d8cfb6" />${bars}${labels}</svg>` +
     `<p class="chart-key"><span class="key-dot now"></span> November &nbsp; <span class="key-dot before"></span> October</p>`;
+}
+
+/* Vertical bars for the four weeks of November, in the same visual
+   language as monthBars: pine bars, the amount on top, the week below. */
+function weekBars(weeks) {
+  const top = Math.max(...weeks.map((w) => w.cents), 1);
+  const W = 560, H = 230, base = 180, gap = 40;
+  const slot = (W - gap) / 4;
+  const barW = 64;
+  let bars = "";
+  let labels = "";
+  weeks.forEach((w, i) => {
+    const x0 = gap / 2 + i * slot;
+    const h = Math.max(Math.round(140 * w.cents / top), 2);
+    bars += `<rect x="${x0}" y="${base - h}" width="${barW}" height="${h}" rx="4" fill="#1e4d3a" />` +
+      `<text x="${x0 + barW / 2}" y="${base - h - 8}" text-anchor="middle" class="bar-val">${money(w.cents)}</text>`;
+    labels += `<text x="${x0 + barW / 2}" y="${base + 22}" text-anchor="middle" class="bar-lab">${w.label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" class="bars" role="img" aria-label="Spending by week in November">` +
+    `<line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="#d8cfb6" />${bars}${labels}</svg>`;
 }

@@ -98,6 +98,102 @@ function nextTxId(state) {
   return "t" + String(n + 1).padStart(2, "0");
 }
 
+/* ---- Month pace, weekly spending and goal projections ---- */
+
+/* Days in a month, e.g. 30 for November 2026. */
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+/* The demo "today": the newest transaction date, clamped inside the
+   seed month so the figures always describe November 2026 — even after
+   the household adds a transaction dated in December, the pace strip
+   keeps answering for the month the ledger is about. */
+function demoToday(state) {
+  const parts = NEST_SEED.month.split("-").map(Number);
+  const year = parts[0];
+  const month = parts[1];
+  const last = daysInMonth(year, month);
+  let latest = 1;
+  for (const tx of state.transactions) {
+    const day = parseInt((tx.date || "").slice(8, 10), 10);
+    if (Number.isFinite(day)) latest = Math.max(latest, day);
+  }
+  const day = Math.min(Math.max(latest, 1), last);
+  return { year, month, day, daysInMonth: last, daysLeft: last - day };
+}
+
+/* How November is pacing: what is safe to spend each remaining day,
+   and whether the flexible spending is ahead of or behind the plan
+   for this point in the month. Categories whose money lands as one
+   lump at the start of the month (rent, on the 1st) are left out of
+   the pace comparison: judging them against an evenly-spread plan
+   would always cry wolf in week one. */
+const PACE_FIXED = ["Housing"];
+
+function monthPace(state) {
+  const totals = sumKinds(state.transactions);
+  const today = demoToday(state);
+  const flexCats = NEST_SEED.spendCategories.filter((c) => !PACE_FIXED.includes(c));
+  const flexLimit = flexCats
+    .reduce((sum, cat) => sum + (state.limits[cat] || 0), 0);
+  const flexSpent = state.transactions
+    .filter((tx) => tx.kind === "spending" && flexCats.includes(tx.category))
+    .reduce((sum, tx) => sum + tx.cents, 0);
+  const safePerDay = today.daysLeft > 0
+    ? Math.floor(totals.remaining / today.daysLeft)
+    : totals.remaining;
+  const expected = Math.round(flexLimit * today.day / today.daysInMonth);
+  const pacePct = expected > 0
+    ? 100 * (flexSpent - expected) / expected
+    : 0;
+  return {
+    day: today.day,
+    daysInMonth: today.daysInMonth,
+    daysLeft: today.daysLeft,
+    remaining: totals.remaining,
+    flexLimit,
+    flexSpent,
+    safePerDay,
+    expected,
+    pacePct,
+  };
+}
+
+/* Spending grouped by week of the month: Nov 1–7, 8–14, 15–21, 22–30. */
+function weeklySpending(list) {
+  const weeks = [
+    { label: "Nov 1–7", from: 1, to: 7, cents: 0 },
+    { label: "Nov 8–14", from: 8, to: 14, cents: 0 },
+    { label: "Nov 15–21", from: 15, to: 21, cents: 0 },
+    { label: "Nov 22–30", from: 22, to: 31, cents: 0 },
+  ];
+  for (const tx of list) {
+    if (tx.kind !== "spending") continue;
+    const day = parseInt((tx.date || "").slice(8, 10), 10);
+    const week = weeks.find((w) => day >= w.from && day <= w.to);
+    if (week) week.cents += tx.cents;
+  }
+  return weeks;
+}
+
+/* When a goal finishes at its current saving pace: the pace is what
+   the household actually put into that goal this month, so the date
+   moves when the household saves more — or stalls when it stops. */
+function goalProjection(goal, state) {
+  const pace = state.transactions
+    .filter((tx) => tx.kind === "saving" && tx.category === goal.name)
+    .reduce((sum, tx) => sum + tx.cents, 0);
+  const left = Math.max(0, goal.target - goal.saved);
+  if (left === 0) return { pace, monthsLeft: 0, finishLabel: "Target reached" };
+  if (pace <= 0) return { pace, monthsLeft: null, finishLabel: "" };
+  const monthsLeft = Math.ceil(left / pace);
+  const parts = NEST_SEED.month.split("-").map(Number);
+  const finish = new Date(parts[0], parts[1] - 1 + monthsLeft, 1);
+  const finishLabel = finish.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  return { pace, monthsLeft, finishLabel };
+}
+
 /* Add a transaction. A saving entry whose category names a goal also
    tops that goal up, so the goals page and the ledger always agree. */
 function addTransaction(state, tx) {

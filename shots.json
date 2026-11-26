@@ -5,28 +5,28 @@
       "view": "dashboard",
       "width": 1280,
       "height": 800,
-      "bytes": 96499
+      "bytes": 91746
     },
     {
       "file": "2-transactions.jpg",
       "view": "transactions",
       "width": 1280,
       "height": 800,
-      "bytes": 73492
+      "bytes": 76944
     },
     {
       "file": "3-budgets.jpg",
       "view": "budgets",
       "width": 1280,
       "height": 800,
-      "bytes": 81281
+      "bytes": 87543
     },
     {
       "file": "4-dashboard-phone.jpg",
       "view": "dashboard",
       "width": 390,
       "height": 844,
-      "bytes": 40632
+      "bytes": 40846
     }
   ]
 }
