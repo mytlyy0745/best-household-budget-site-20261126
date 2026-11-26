@@ -1,0 +1,32 @@
+{
+  "shots": [
+    {
+      "file": "1-dashboard.jpg",
+      "view": "dashboard",
+      "width": 1280,
+      "height": 800,
+      "bytes": 96499
+    },
+    {
+      "file": "2-transactions.jpg",
+      "view": "transactions",
+      "width": 1280,
+      "height": 800,
+      "bytes": 73492
+    },
+    {
+      "file": "3-budgets.jpg",
+      "view": "budgets",
+      "width": 1280,
+      "height": 800,
+      "bytes": 81281
+    },
+    {
+      "file": "4-dashboard-phone.jpg",
+      "view": "dashboard",
+      "width": 390,
+      "height": 844,
+      "bytes": 40632
+    }
+  ]
+}
