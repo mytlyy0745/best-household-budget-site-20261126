@@ -43,13 +43,38 @@ function progressBar(percent, tone) {
   return `<div class="bar"><div class="bar-fill ${tone || ""}" style="width:${p.toFixed(1)}%"></div></div>`;
 }
 
+/* The over-budget banner: one line at the top of every page except
+   the Dashboard, where the hero note already says it. It names the
+   worst overage first and counts the rest, with a link to Budgets
+   and a dismiss button (boot.js hides it for the rest of the visit).
+   Nothing renders when no budget is over. */
+function overBanner(state, route) {
+  const over = overBudgetSummary(state);
+  if (!over.length) return "";
+  const first = over[0];
+  const text = over.length === 1
+    ? `${first.cat} is ${money(first.overBy)} over its ${money(first.limit)} limit.`
+    : `${first.cat} is ${money(first.overBy)} over its limit, and ${over.length - 1} more ${over.length - 1 === 1 ? "budget is" : "budgets are"} over too.`;
+  // On the Budgets page itself the link would point at the page the
+  // household is already looking at, so it is left out there.
+  const link = route === "budgets" ? "" : ` <a href="#/budgets">See Budgets &rarr;</a>`;
+  return `<div class="over-banner"><span>${esc(text)}</span>${link}<button class="over-dismiss" id="over-dismiss" type="button" aria-label="Dismiss this warning">Dismiss</button></div>`;
+}
+
 /* ---------------- Dashboard ---------------- */
 
 function pageDashboard(state) {
   const totals = sumKinds(state.transactions);
   const rows = spendByCategory(state.transactions);
+  // The hero note is November's verdict, so it counts November's
+  // spending only — a December purchase must not make November read
+  // as over budget. The donut above keeps the ledger's totals.
+  const monthPrefix = NEST_SEED.month + "-";
   const overCats = NEST_SEED.spendCategories.filter((cat) => {
-    const spent = rows.find((r) => r.category === cat)?.cents || 0;
+    const spent = state.transactions
+      .filter((tx) => tx.kind === "spending" && tx.category === cat &&
+        String(tx.date || "").startsWith(monthPrefix))
+      .reduce((sum, tx) => sum + tx.cents, 0);
     return spent > (state.limits[cat] || 0);
   });
   const heroNote = overCats.length
@@ -247,15 +272,23 @@ function pageTransactions(state, ui) {
 /* ---------------- Budgets ---------------- */
 
 function pageBudgets(state) {
-  const rows = spendByCategory(state.transactions);
-  const spentOf = (cat) => rows.find((r) => r.category === cat)?.cents || 0;
+  // This page is November's budgets, so the spent figures are the
+  // seed month's — the burn line already counts only November, and a
+  // December purchase must not make the row's own "$260.00 of $180.00"
+  // disagree with its "Over by $30.00" underneath it.
+  const monthPrefix = NEST_SEED.month + "-";
+  const spentOf = (cat) => state.transactions
+    .filter((tx) => tx.kind === "spending" && tx.category === cat &&
+      String(tx.date || "").startsWith(monthPrefix))
+    .reduce((sum, tx) => sum + tx.cents, 0);
   const saved = sumKinds(state.transactions).saving;
   // The move form opens pre-filled with the one move that would help
   // most — the suggestion the dashboard's Next moves panel shows.
   const sug = rebalanceSuggestion(state);
   const totalLimit = NEST_SEED.spendCategories
     .reduce((sum, cat) => sum + (state.limits[cat] || 0), 0);
-  const totalSpent = rows.reduce((sum, r) => sum + r.cents, 0);
+  const totalSpent = NEST_SEED.spendCategories
+    .reduce((sum, cat) => sum + spentOf(cat), 0);
   return `
   <section class="panel">
     <h1>Budgets — ${esc(NEST_SEED.monthLabel)}</h1>
@@ -265,7 +298,7 @@ function pageBudgets(state) {
       <p class="muted">Shift a limit from a budget with room to one that's tight. The month's total limit stays the same — this is envelope budgeting, not new money.</p>
       <form id="move-form" class="move-grid">
         <label>From <select id="move-from">${NEST_SEED.spendCategories.map((c) => {
-          const free = headroom(state, c);
+          const free = (state.limits[c] || 0) - spentOf(c);
           const sel = sug && c === sug.fromCat ? " selected" : "";
           return `<option value="${esc(c)}"${sel}>${esc(c)} — ${free >= 0 ? money(free) + " free" : money(-free) + " over"}</option>`;
         }).join("")}</select></label>
@@ -300,6 +333,7 @@ function pageBudgets(state) {
       const spent = spentOf(cat);
       const limit = state.limits[cat] || 0;
       const burn = burnProjection(state, cat);
+      const over = burn.kind === "over" ? overrunLine(state, cat) : "";
       return `<div class="budget-row">
         <div class="snap-head"><span><b>${esc(cat)}</b></span><span>${money(spent)} of <span id="limit-label-${esc(cat)}">${money(limit)}</span></span></div>
         ${progressBar(100 * spent / limit, spent > limit ? "over" : "")}
@@ -308,6 +342,7 @@ function pageBudgets(state) {
           <button class="btn small limit-save" data-cat="${esc(cat)}">Save limit</button></span>
         </div>
         <div class="burn-line${burn.kind === "over" ? " burn-over" : ""}">${esc(burnLine(burn))}</div>
+        ${over ? `<div class="over-line">${esc(over)}</div>` : ""}
       </div>`;
     }).join("")}
   </section>`;

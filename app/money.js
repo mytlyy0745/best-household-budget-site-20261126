@@ -162,8 +162,13 @@ function monthPace(state) {
   const flexCats = NEST_SEED.spendCategories.filter((c) => !PACE_FIXED.includes(c));
   const flexLimit = flexCats
     .reduce((sum, cat) => sum + (state.limits[cat] || 0), 0);
+  // Only the seed month counts here, like the weekly and daily charts:
+  // a December purchase used to land in November's pace and make the
+  // month look further ahead than it really is.
+  const prefix = NEST_SEED.month + "-";
   const flexSpent = state.transactions
-    .filter((tx) => tx.kind === "spending" && flexCats.includes(tx.category))
+    .filter((tx) => tx.kind === "spending" && flexCats.includes(tx.category) &&
+      String(tx.date || "").startsWith(prefix))
     .reduce((sum, tx) => sum + tx.cents, 0);
   const safePerDay = today.daysLeft > 0
     ? Math.floor(totals.remaining / today.daysLeft)
@@ -306,17 +311,21 @@ function monthDay(iso) {
    (rent, a subscription) is a lump, not a pace — the honest line for
    it is what is left, not a projected date. */
 function burnProjection(state, cat) {
-  const spent = spendByCategory(state.transactions)
-    .find((r) => r.category === cat)?.cents || 0;
+  // Only the seed month counts: a December purchase in this category
+  // used to move the November burn line — a $50 December coat turned
+  // Shopping's "Over by $30.00" into "Over by $80.00".
+  const prefix = NEST_SEED.month + "-";
+  const monthTx = state.transactions.filter((tx) =>
+    tx.kind === "spending" && tx.category === cat &&
+    String(tx.date || "").startsWith(prefix));
+  const spent = monthTx.reduce((sum, tx) => sum + tx.cents, 0);
   const limit = state.limits[cat] || 0;
   const today = demoToday(state);
   if (spent > limit) return { kind: "over", spent, limit, overBy: spent - limit };
   if (spent === limit && limit > 0) return { kind: "met", spent, limit };
   if (limit <= 0) return { kind: "nolimit", spent, limit };
   if (spent <= 0) return { kind: "none", spent, limit };
-  const days = state.transactions
-    .filter((tx) => tx.kind === "spending" && tx.category === cat)
-    .map((tx) => tx.date);
+  const days = monthTx.map((tx) => tx.date);
   if (new Set(days).size === 1) {
     return { kind: "lump", spent, limit, left: limit - spent, date: days[0] };
   }
@@ -343,6 +352,52 @@ function burnLine(proj) {
     case "safe": return `At this pace the limit lasts the month — about ${money(proj.rate)} a day.`;
     default: return "";
   }
+}
+
+/* When a budget went over, and which purchase did it: walk the
+   category's November spending in date order and find the first
+   transaction that pushed the running total past the limit. The seed
+   Shopping budget went over on Nov 18 — one $210.00 winter-coats
+   purchase against a $180.00 limit — and the line names it, instead
+   of the budget just reading "over" with no story. Only the seed
+   month counts, like the burn projection: a December purchase must
+   not rewrite November's history. Returns "" when the budget is not
+   over — there is no overrun to tell. */
+function overrunLine(state, cat) {
+  const limit = state.limits[cat] || 0;
+  const prefix = NEST_SEED.month + "-";
+  const txs = state.transactions
+    .filter((tx) => tx.kind === "spending" && tx.category === cat &&
+      String(tx.date || "").startsWith(prefix))
+    .sort((a, b) => (a.date + a.id).localeCompare(b.date + b.id));
+  let running = 0;
+  for (const tx of txs) {
+    running += tx.cents;
+    if (running > limit) {
+      return `Went over on ${monthDay(tx.date)} — ${money(tx.cents)} on “${tx.note}” pushed it ${money(running - limit)} over.`;
+    }
+  }
+  return "";
+}
+
+/* The categories over their limits right now, biggest overage first:
+   the banner on every page names them, so an over-budget month is
+   visible before the household reaches the Budgets page. The figures
+   are November's, like the Budgets page the banner links to, so the
+   two can never disagree about which budgets are over or by how much. */
+function overBudgetSummary(state) {
+  const prefix = NEST_SEED.month + "-";
+  return NEST_SEED.spendCategories
+    .map((cat) => {
+      const spent = state.transactions
+        .filter((tx) => tx.kind === "spending" && tx.category === cat &&
+          String(tx.date || "").startsWith(prefix))
+        .reduce((sum, tx) => sum + tx.cents, 0);
+      const limit = state.limits[cat] || 0;
+      return { cat, spent, limit, overBy: spent - limit };
+    })
+    .filter((r) => r.overBy > 0)
+    .sort((a, b) => b.overBy - a.overBy);
 }
 
 /* When a goal finishes at its current saving pace: the pace is what
@@ -615,10 +670,15 @@ function daySubtotalLine(totals) {
 /* ---- Moving money between budgets (envelope budgeting) ---- */
 
 /* What a category still has free: its limit minus what it spent.
-   Negative when the category is already over its limit. */
+   Negative when the category is already over its limit. Only the
+   seed month counts, like the burn line — a December purchase must
+   not shrink the room a November move can use. */
 function headroom(state, cat) {
-  const spent = spendByCategory(state.transactions)
-    .find((r) => r.category === cat)?.cents || 0;
+  const prefix = NEST_SEED.month + "-";
+  const spent = state.transactions
+    .filter((tx) => tx.kind === "spending" && tx.category === cat &&
+      String(tx.date || "").startsWith(prefix))
+    .reduce((sum, tx) => sum + tx.cents, 0);
   return (state.limits[cat] || 0) - spent;
 }
 
@@ -656,10 +716,15 @@ function moveLimit(state, fromCat, toCat, cents) {
    puts its source over. Null when nothing is over, or when no budget
    has any room to give. */
 function rebalanceSuggestion(state) {
-  const rows = spendByCategory(state.transactions);
+  // November's overage, from November's spending: the source's room
+  // comes from headroom, which already counts only the seed month.
+  const prefix = NEST_SEED.month + "-";
   let over = null;
   for (const cat of NEST_SEED.spendCategories) {
-    const spent = rows.find((r) => r.category === cat)?.cents || 0;
+    const spent = state.transactions
+      .filter((tx) => tx.kind === "spending" && tx.category === cat &&
+        String(tx.date || "").startsWith(prefix))
+      .reduce((sum, tx) => sum + tx.cents, 0);
     const overBy = spent - (state.limits[cat] || 0);
     if (overBy > 0 && (!over || overBy > over.overBy)) over = { cat, spent, overBy };
   }

@@ -7,6 +7,7 @@ let nestState = loadState();
 const nestUi = { type: "", cat: "", q: "", formKind: "spending", editingId: "" };
 let nestResetArmed = false;
 let nestResetTimer = null;
+let nestBannerDismissed = false;
 
 /* Offer a text file as a download without any server round-trip. */
 function downloadText(filename, text, mime) {
@@ -38,7 +39,22 @@ function render() {
   else if (route === "goals") app.innerHTML = pageGoals(nestState);
   else if (route === "insights") app.innerHTML = pageInsights(nestState);
   else app.innerHTML = pageDashboard(nestState);
+  // The over-budget banner sits above every page except the Dashboard,
+  // whose hero note already says it. Dismissing it hides it for the
+  // rest of the visit; fixing the budget (or a reload) brings the
+  // honest state back.
+  if (route !== "" && !nestBannerDismissed) {
+    const banner = overBanner(nestState, route);
+    if (banner) app.innerHTML = banner + app.innerHTML;
+  }
   bindPage(route);
+  const dismiss = document.getElementById("over-dismiss");
+  if (dismiss) {
+    dismiss.addEventListener("click", () => {
+      nestBannerDismissed = true;
+      render();
+    });
+  }
   window.scrollTo(0, 0);
 }
 

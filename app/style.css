@@ -108,6 +108,39 @@ h2 { font-size: 22px; }
 .btn.small { padding: 7px 12px; font-size: 14px; }
 .btn.danger { background: var(--red); color: #fff; }
 
+/* Over-budget banner: one line above every page except the Dashboard,
+   where the hero note already says it. Red-tinted, with a link to
+   Budgets and a dismiss button that hides it for the visit. */
+.over-banner {
+  background: #f6d7d2;
+  border: 1px solid #e3a99e;
+  border-left: 4px solid var(--red);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 22px 0 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 15px;
+}
+.over-banner a { font-weight: 700; }
+.over-dismiss {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #c98d81;
+  border-radius: 7px;
+  color: var(--red);
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+.over-dismiss:hover { border-color: var(--red); }
+
+/* Overrun history: the purchase that pushed a budget over its limit,
+   under the burn line on that budget's row. */
+.over-line { font-size: 13px; color: var(--red); margin-top: 4px; }
+
 /* Month pace strip */
 .pace {
   display: grid;
@@ -486,6 +519,8 @@ html[data-theme="dark"] .donut-total,
 html[data-theme="dark"] .gauge-num,
 html[data-theme="dark"] .bar-val { fill: #dceadf; }
 html[data-theme="dark"] .tx-day-total { color: #dceadf; }
+html[data-theme="dark"] .over-banner { background: #4a2b26; border-color: #6b3a32; }
+html[data-theme="dark"] .over-dismiss { border-color: #8a5a50; color: #f09a86; }
 /* The charts bake their pine green into SVG attributes, which would
    sit too dark on a dark card: brighten the November bars, and give
    the savings gauge a dark track with a brighter filled arc, so the
@@ -542,7 +577,7 @@ html[data-theme="dark"] .gauge path[stroke="#1e4d3a"] { stroke: #5da987; }
   body { background: #fff; }
   .topbar, .btn, .tx-del, .tx-edit-btn, form, .filters, .move-box,
   .fund-row, .donut-hint, .limit-edit, #report-download, #reset-demo,
-  .import-label, #tx-import, .theme-toggle { display: none !important; }
+  .import-label, #tx-import, .theme-toggle, .over-banner, .over-dismiss { display: none !important; }
   .hero { background: #fff; color: var(--ink); border: 1px solid var(--line); }
   .hero h1, .hero h1 span { color: var(--pine-dark); }
   .hero-sub { color: var(--muted); }
