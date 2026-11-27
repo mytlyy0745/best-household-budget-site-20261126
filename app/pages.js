@@ -212,15 +212,18 @@ function pageTransactions(state, ui) {
     </div>
     <p id="tx-totals">Showing ${list.length} of ${state.transactions.length} — income <b>${money(totals.income)}</b> · spending <b>${money(totals.spending)}</b> · saving <b>${money(totals.saving)}</b></p>
     <p><button class="btn small" id="tx-csv" type="button">Download these ${list.length} as CSV</button> <label class="btn small import-label" for="tx-import">Import CSV</label><input id="tx-import" type="file" accept=".csv,text/csv" hidden> <span class="muted">Exports exactly the rows shown above — no account, no upload. Import reads the same columns back in.</span></p>
+    <p class="muted">Grouped by day, newest first — each day shows its own subtotal. Press <b>/</b> anywhere to jump to search, <b>1–5</b> to switch pages.</p>
     <p class="muted" id="tx-import-msg" aria-live="polite"></p>
     <ul class="tx-list">
-      ${list.map((tx) => ui.editingId === tx.id ? txEditRow(tx, state) : `<li>
+      ${groupTransactionsByDay(list).map((g) => `
+      <li class="tx-day"><span><b>${esc(g.label)}</b> <span class="muted">· ${g.count} ${g.count === 1 ? "entry" : "entries"}</span></span><b class="tx-day-total">${esc(daySubtotalLine(g.totals))}</b></li>
+      ${g.txs.map((tx) => ui.editingId === tx.id ? txEditRow(tx, state) : `<li>
         <span class="tx-date">${esc(tx.date)}</span>
         <span class="tx-note">${highlightMatch(esc(tx.note), ui.q)} <span class="muted">· ${highlightMatch(esc(tx.category), ui.q)}</span></span>
         <b class="amt-${tx.kind}">${tx.kind === "income" ? "+" : "−"}${money(tx.cents)}</b>
         <button class="tx-edit-btn" data-id="${esc(tx.id)}" aria-label="Edit ${esc(tx.note)}">Edit</button>
         <button class="tx-del" data-id="${esc(tx.id)}" aria-label="Delete ${esc(tx.note)}">Delete</button>
-      </li>`).join("") || `<li class="muted">Nothing matches those filters.</li>`}
+      </li>`).join("")}`).join("") || `<li class="muted">Nothing matches those filters.</li>`}
     </ul>
   </section>`;
 }
@@ -295,6 +298,7 @@ function pageGoals(state) {
     <p>Every dollar has a job. Add funds to a goal and the ledger records it as a saving transaction automatically.</p>
     ${state.goals.map((g) => {
       const proj = goalProjection(g, state);
+      const plan = goalMonthlyPlan(g, state);
       const projLine = proj.monthsLeft === 0 ? "Target reached — well done."
         : proj.monthsLeft === null ? "Add funds to start the countdown."
         : `About ${proj.monthsLeft} month${proj.monthsLeft === 1 ? "" : "s"} to go at the current pace (${money(proj.pace)} a month) — around ${proj.finishLabel}.`;
@@ -304,6 +308,11 @@ function pageGoals(state) {
         ${progressBar(100 * g.saved / g.target, "goal")}
         <div class="snap-foot"><span>${pctOf(g.saved, g.target)} saved</span><span class="muted">${money(Math.max(0, g.target - g.saved))} to go</span></div>
         <div class="goal-proj" id="goal-proj-${esc(g.id)}">${projLine}</div>
+        <div class="goal-plan" id="goal-plan-${esc(g.id)}">
+          <div class="goal-plan-row"><span>Finish in 6 months</span><b>${money(plan.need6)} a month</b></div>
+          <div class="goal-plan-row"><span>Finish in 12 months</span><b>${money(plan.need12)} a month</b></div>
+          <div class="goal-plan-line">${esc(goalPlanLine(g, state))}</div>
+        </div>
         <div class="fund-row">
           <label>Add funds ($) <input id="fund-${esc(g.id)}" type="number" min="1" step="1" placeholder="50"></label>
           <button class="btn small fund-add" data-goal="${esc(g.id)}">Add to ${esc(g.name)}</button>

@@ -325,6 +325,22 @@ input, select {
 
 .foot { color: var(--muted); font-size: 13px; padding: 10px 18px 34px; }
 
+/* Goal plan: what each month has to carry to finish on a schedule. */
+.goal-plan { background: #f0ead6; border-radius: 10px; padding: 10px 14px; margin-top: 10px; }
+.goal-plan-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 2px 0; }
+.goal-plan-line { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+/* Day groups in the transaction list: one header per day with its
+   own subtotal, so a day's money is visible without adding it up. */
+.tx-day {
+  background: #f0ead6;
+  border-radius: 8px;
+  padding: 7px 12px !important;
+  margin-top: 8px;
+  justify-content: space-between;
+}
+.tx-day-total { font-size: 13px; color: var(--pine-dark); }
+
 @media (max-width: 720px) {
   .hero h1 { font-size: 30px; }
   .cards { grid-template-columns: 1fr 1fr; }

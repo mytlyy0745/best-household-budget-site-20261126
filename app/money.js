@@ -339,6 +339,77 @@ function goalProjection(goal, state) {
   return { pace, monthsLeft, finishLabel };
 }
 
+/* What a goal needs each month to finish on a schedule, not just at
+   the pace the household happens to be saving now: the amount is
+   rounded UP to the cent, so paying it every month really does cover
+   the gap (rounding down would leave a few cents short at the end).
+   A goal that is already met needs nothing; one with no saving pace
+   yet still gets its numbers, so the household can see what "start"
+   would have to look like. */
+function goalMonthlyPlan(goal, state) {
+  const pace = state.transactions
+    .filter((tx) => tx.kind === "saving" && tx.category === goal.name)
+    .reduce((sum, tx) => sum + tx.cents, 0);
+  const left = Math.max(0, goal.target - goal.saved);
+  const monthsAtPace = pace > 0 ? Math.ceil(left / pace) : null;
+  return {
+    pace,
+    left,
+    need6: left === 0 ? 0 : Math.ceil(left / 6),
+    need12: left === 0 ? 0 : Math.ceil(left / 12),
+    monthsAtPace,
+  };
+}
+
+/* One sentence comparing the goal's real pace with its 6- and
+   12-month plans, so the household can see whether to save more —
+   and by exactly how much — instead of just watching a date drift. */
+function goalPlanLine(goal, state) {
+  const plan = goalMonthlyPlan(goal, state);
+  if (plan.left === 0) return "Target reached — nothing more to save.";
+  if (plan.pace <= 0) {
+    return `No money went into this goal yet — ${money(plan.need6)} a month would finish it in 6 months, ${money(plan.need12)} a month in 12.`;
+  }
+  if (plan.pace >= plan.need6) {
+    return `At ${money(plan.pace)} a month you are already saving enough to finish it in 6 months.`;
+  }
+  if (plan.pace >= plan.need12) {
+    return `At ${money(plan.pace)} a month it takes about ${plan.monthsAtPace} months — ${money(plan.need6 - plan.pace)} more a month would do it in 6.`;
+  }
+  return `At ${money(plan.pace)} a month it takes about ${plan.monthsAtPace} months — ${money(plan.need12 - plan.pace)} more a month would finish it in 12.`;
+}
+
+/* Group a transaction list by day, newest day first: each group
+   carries its own totals, so a day's spending, income and saving are
+   visible without adding them up by hand. The groups follow whatever
+   list they are given — the full ledger, or a filtered one. */
+function groupTransactionsByDay(list) {
+  const byDay = new Map();
+  for (const tx of list) {
+    if (!byDay.has(tx.date)) byDay.set(tx.date, []);
+    byDay.get(tx.date).push(tx);
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, txs]) => {
+      const totals = sumKinds(txs);
+      const parts = date.split("-").map(Number);
+      const label = new Date(parts[0], parts[1] - 1, parts[2])
+        .toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      return { date, label, txs, totals, count: txs.length };
+    });
+}
+
+/* A group's totals as one short line: only the kinds that actually
+   happened that day are shown, with the sign each kind carries. */
+function daySubtotalLine(totals) {
+  const bits = [];
+  if (totals.income > 0) bits.push(`income +${money(totals.income)}`);
+  if (totals.spending > 0) bits.push(`spending −${money(totals.spending)}`);
+  if (totals.saving > 0) bits.push(`saving −${money(totals.saving)}`);
+  return bits.join(" · ");
+}
+
 /* ---- Moving money between budgets (envelope budgeting) ---- */
 
 /* What a category still has free: its limit minus what it spent.

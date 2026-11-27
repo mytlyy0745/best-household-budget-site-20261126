@@ -296,3 +296,52 @@ function bindPage(route) {
 
 window.addEventListener("hashchange", render);
 render();
+
+/* Keyboard shortcuts, for the household that lives in this site:
+   1–5 switch pages, / jumps to the transaction search, n starts a
+   new transaction, Esc clears the search and filters (or closes an
+   open edit form). They never fire while the household is typing in
+   a field — a "1" in the search box stays a "1" — and never with a
+   modifier key held, so browser shortcuts are untouched. */
+const NEST_PAGES = ["", "transactions", "budgets", "goals", "insights"];
+
+function focusAfterNav(hash, selector) {
+  if ((window.location.hash || "#/") !== hash) {
+    window.location.hash = hash;
+  }
+  setTimeout(() => {
+    const el = document.querySelector(selector);
+    if (el) el.focus();
+  }, 60);
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t = ev.target;
+  const typing = t && (t.tagName === "INPUT" || t.tagName === "SELECT" ||
+    t.tagName === "TEXTAREA" || t.isContentEditable);
+  if (ev.key === "Escape") {
+    if (typing) { t.blur(); return; }
+    if (nestUi.editingId) { nestUi.editingId = ""; render(); return; }
+    if (nestUi.q || nestUi.type || nestUi.cat) {
+      nestUi.q = ""; nestUi.type = ""; nestUi.cat = ""; nestUi.editingId = "";
+      render();
+    }
+    return;
+  }
+  if (typing) return;
+  if (ev.key >= "1" && ev.key <= "5") {
+    ev.preventDefault();
+    window.location.hash = "#/" + NEST_PAGES[Number(ev.key) - 1];
+    return;
+  }
+  if (ev.key === "/") {
+    ev.preventDefault();
+    focusAfterNav("#/transactions", "#flt-q");
+    return;
+  }
+  if (ev.key === "n" || ev.key === "N") {
+    ev.preventDefault();
+    focusAfterNav("#/transactions", "#tx-note");
+  }
+});
