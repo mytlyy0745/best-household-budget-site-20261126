@@ -342,7 +342,6 @@ input, select {
 .tx-day-total { font-size: 13px; color: var(--pine-dark); }
 
 @media (max-width: 720px) {
-  .hero h1 { font-size: 30px; }
   .cards { grid-template-columns: 1fr 1fr; }
   .pace { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
@@ -353,4 +352,24 @@ input, select {
   .nav-link { padding: 6px 8px; font-size: 14px; }
   .activity li, .tx-list li { flex-wrap: wrap; }
   .tx-date { min-width: 0; }
+}
+
+/* Print: the month on paper. Navigation, buttons and forms are
+   controls, not content, so they go; the dark hero and the dark
+   Remaining card print as plain bordered boxes instead of solid ink;
+   panels never split across a page break. */
+@media print {
+  body { background: #fff; }
+  .topbar, .btn, .tx-del, .tx-edit-btn, form, .filters, .move-box,
+  .fund-row, .donut-hint, .limit-edit, #report-download, #reset-demo,
+  .import-label, #tx-import { display: none !important; }
+  .hero { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .hero h1, .hero h1 span { color: var(--pine-dark); }
+  .hero-sub { color: var(--muted); }
+  .stat.highlight { background: #fff; border-color: var(--line); }
+  .stat.highlight strong, .stat.highlight .stat-label { color: var(--pine-dark); }
+  .stat.highlight .muted { color: var(--muted); }
+  .panel, .stat, .pace > div, .moves, .goal-card, .budget-row { break-inside: avoid; }
+  .wrap { max-width: none; }
+  a { text-decoration: none; }
 }

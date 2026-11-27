@@ -114,17 +114,22 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-/* The demo "today": the newest transaction date, clamped inside the
-   seed month so the figures always describe November 2026 — even after
-   the household adds a transaction dated in December, the pace strip
-   keeps answering for the month the ledger is about. */
+/* The demo "today": the newest transaction date inside the seed
+   month, clamped inside it so the figures always describe November
+   2026 — even after the household adds a transaction dated in
+   December, the pace strip keeps answering for the month the ledger
+   is about. Dates outside the month are ignored here: a December
+   dinner on the 28th used to push "today" to the 28th and shrink the
+   days left from five to two. */
 function demoToday(state) {
   const parts = NEST_SEED.month.split("-").map(Number);
   const year = parts[0];
   const month = parts[1];
   const last = daysInMonth(year, month);
+  const prefix = NEST_SEED.month + "-";
   let latest = 1;
   for (const tx of state.transactions) {
+    if (!String(tx.date || "").startsWith(prefix)) continue;
     const day = parseInt((tx.date || "").slice(8, 10), 10);
     if (Number.isFinite(day)) latest = Math.max(latest, day);
   }
@@ -180,7 +185,9 @@ function monthPace(state) {
   };
 }
 
-/* Spending grouped by week of the month: Nov 1–7, 8–14, 15–21, 22–30. */
+/* Spending grouped by week of the month: Nov 1–7, 8–14, 15–21, 22–30.
+   Only the seed month counts — a transaction dated in December used
+   to land in a November week by its day number alone. */
 function weeklySpending(list) {
   const weeks = [
     { label: "Nov 1–7", from: 1, to: 7, cents: 0 },
@@ -188,13 +195,29 @@ function weeklySpending(list) {
     { label: "Nov 15–21", from: 15, to: 21, cents: 0 },
     { label: "Nov 22–30", from: 22, to: 30, cents: 0 },
   ];
+  const prefix = NEST_SEED.month + "-";
   for (const tx of list) {
     if (tx.kind !== "spending") continue;
+    if (!String(tx.date || "").startsWith(prefix)) continue;
     const day = parseInt((tx.date || "").slice(8, 10), 10);
     const week = weeks.find((w) => day >= w.from && day <= w.to);
     if (week) week.cents += tx.cents;
   }
   return weeks;
+}
+
+/* Income grouped by source, biggest first — the mirror of
+   spendByCategory: the household's money comes from five places, and
+   until now only the total ever showed. */
+function incomeByCategory(list) {
+  const byCat = new Map();
+  for (const tx of list) {
+    if (tx.kind !== "income") continue;
+    byCat.set(tx.category, (byCat.get(tx.category) || 0) + tx.cents);
+  }
+  return [...byCat.entries()]
+    .map(([category, cents]) => ({ category, cents }))
+    .sort((a, b) => b.cents - a.cents);
 }
 
 /* Spending on each day of the seed month, day 1 to the last day —
@@ -695,6 +718,11 @@ function monthReport(state) {
   lines.push(`Savings  ${money(totals.saving)}`);
   lines.push(`Left     ${money(totals.remaining)}`);
   lines.push(`Savings rate ${sr.rate.toFixed(1)}% of income (target ${sr.targetRate}%)`);
+  lines.push("");
+  lines.push("Income sources");
+  for (const r of incomeByCategory(state.transactions)) {
+    lines.push(`  ${r.category}: ${money(r.cents)} (${pctOf(r.cents, totals.income)} of income)`);
+  }
   lines.push("");
   lines.push("Budgets");
   for (const cat of NEST_SEED.spendCategories) {

@@ -353,6 +353,13 @@ function pageInsights(state) {
     ? `The biggest day was Nov ${biggestDay.day} at ${money(biggestDay.cents)}${biggestDay.day === 1 ? " — rent day, so it always leads" : ""}. ${quietDays} of the 30 days had no spending at all.`
     : "No spending yet this month — every day is still at zero.";
   const sr = savingsRate(state);
+  const inc = incomeByCategory(state.transactions);
+  const topInc = inc[0] || { category: "—", cents: 0 };
+  const incNote = totals.income <= 0
+    ? "No income yet this month — add a salary, a refund or a gift and it shows up here."
+    : inc.length === 1
+      ? `${esc(topInc.category)} is the only income this month — ${money(topInc.cents)} in, and everything depends on it.`
+      : `${esc(topInc.category)} carries the month at ${money(topInc.cents)} (${pctOf(topInc.cents, totals.income)} of all income). The other ${inc.length - 1} sources together add ${money(totals.income - topInc.cents)}.`;
   const gaugeNote = totals.income <= 0
     ? "No income this month, so there is no savings rate to show yet."
     : sr.rate >= sr.targetRate
@@ -390,6 +397,13 @@ function pageInsights(state) {
       ${savingsGauge(sr.rate, sr.targetRate)}
       <p class="gauge-note">${gaugeNote}</p>
     </div>
+  </section>
+  <section class="panel">
+    <h2>Where the money came from</h2>
+    ${inc.length ? `<ol class="rank">
+      ${inc.map((r, i) => `<li><span class="rank-pos">${i + 1}</span><span class="rank-cat">${esc(r.category)}</span><span class="rank-bar">${progressBar(100 * r.cents / topInc.cents, "")}</span><b>${money(r.cents)}</b></li>`).join("")}
+    </ol>` : ""}
+    <p class="muted">${incNote}</p>
   </section>
   <div class="two-col">
     <section class="panel">
