@@ -82,11 +82,20 @@ function spendByCategory(list) {
 }
 
 function budgetStatus(spent, limit) {
-  if (limit <= 0) return "No limit";
+  if (limit <= 0) return spent > 0 ? "Over budget" : "No limit";
   if (spent > limit) return "Over budget";
   if (spent === limit) return "Target met";
   if (spent >= 0.8 * limit) return "Almost there";
   return "On track";
+}
+
+/* Which categories a new entry of this kind can take: income has its
+   own list, saving goes to a goal by name, spending to the nine
+   household categories. Pages and the CSV import both use this. */
+function categoryOptions(kind, state) {
+  if (kind === "income") return NEST_SEED.incomeCategories;
+  if (kind === "saving") return state.goals.map((g) => g.name);
+  return NEST_SEED.spendCategories;
 }
 
 function nextTxId(state) {
@@ -188,6 +197,61 @@ function weeklySpending(list) {
   return weeks;
 }
 
+/* An ISO date as a short "Nov 28", built from its parts so no
+   timezone can shift the day. */
+function monthDay(iso) {
+  const parts = String(iso || "").split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return String(iso || "");
+  return new Date(parts[0], parts[1] - 1, parts[2])
+    .toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/* When a budget's limit runs out at the pace the household is
+   spending it: the daily rate is what it spent so far divided by the
+   days gone, and the limit is hit when the remaining room runs out
+   at that rate. A category whose spending all landed on one day
+   (rent, a subscription) is a lump, not a pace — the honest line for
+   it is what is left, not a projected date. */
+function burnProjection(state, cat) {
+  const spent = spendByCategory(state.transactions)
+    .find((r) => r.category === cat)?.cents || 0;
+  const limit = state.limits[cat] || 0;
+  const today = demoToday(state);
+  if (spent > limit) return { kind: "over", spent, limit, overBy: spent - limit };
+  if (spent === limit && limit > 0) return { kind: "met", spent, limit };
+  if (limit <= 0) return { kind: "nolimit", spent, limit };
+  if (spent <= 0) return { kind: "none", spent, limit };
+  const days = state.transactions
+    .filter((tx) => tx.kind === "spending" && tx.category === cat)
+    .map((tx) => tx.date);
+  if (new Set(days).size === 1) {
+    return { kind: "lump", spent, limit, left: limit - spent, date: days[0] };
+  }
+  const rate = Math.round(spent / today.day);
+  const daysToLimit = Math.ceil((limit - spent) / rate);
+  const hitDay = today.day + daysToLimit;
+  if (hitDay > today.daysInMonth) {
+    return { kind: "safe", spent, limit, rate };
+  }
+  const parts = NEST_SEED.month.split("-").map(Number);
+  const hitDate = `${parts[0]}-${String(parts[1]).padStart(2, "0")}-${String(hitDay).padStart(2, "0")}`;
+  return { kind: "pace", spent, limit, rate, hitDay, hitDate };
+}
+
+/* The burn projection as one plain line for a budget row. */
+function burnLine(proj) {
+  switch (proj.kind) {
+    case "over": return `Over by ${money(proj.overBy)} — the limit is already spent.`;
+    case "met": return "Limit reached exactly — nothing left for this category.";
+    case "nolimit": return "No limit set for this category.";
+    case "none": return "Nothing spent yet this month.";
+    case "lump": return `Paid on ${monthDay(proj.date)} — ${money(proj.left)} of the limit left.`;
+    case "pace": return `At this pace, the limit runs out around ${monthDay(proj.hitDate)}.`;
+    case "safe": return `At this pace the limit lasts the month — about ${money(proj.rate)} a day.`;
+    default: return "";
+  }
+}
+
 /* When a goal finishes at its current saving pace: the pace is what
    the household actually put into that goal this month, so the date
    moves when the household saves more — or stalls when it stops. */
@@ -203,6 +267,108 @@ function goalProjection(goal, state) {
   const finish = new Date(parts[0], parts[1] - 1 + monthsLeft, 1);
   const finishLabel = finish.toLocaleDateString("en-US", { month: "short", year: "numeric" });
   return { pace, monthsLeft, finishLabel };
+}
+
+/* ---- Moving money between budgets (envelope budgeting) ---- */
+
+/* What a category still has free: its limit minus what it spent.
+   Negative when the category is already over its limit. */
+function headroom(state, cat) {
+  const spent = spendByCategory(state.transactions)
+    .find((r) => r.category === cat)?.cents || 0;
+  return (state.limits[cat] || 0) - spent;
+}
+
+/* Move limit dollars from one spending category to another. The
+   month's total limit never changes — this is envelope budgeting, not
+   new money. The source must have the room: moving more than its
+   headroom would just move the overage somewhere else. Returns an
+   object saying what happened, so the page can say it in words. */
+function moveLimit(state, fromCat, toCat, cents) {
+  if (!NEST_SEED.spendCategories.includes(fromCat) || !NEST_SEED.spendCategories.includes(toCat)) {
+    return { ok: false, error: "Pick two spending budgets to move between." };
+  }
+  if (fromCat === toCat) {
+    return { ok: false, error: "Pick two different budgets — moving money to itself changes nothing." };
+  }
+  if (!Number.isFinite(cents) || cents <= 0 || Math.floor(cents) !== cents) {
+    return { ok: false, error: "Enter a whole-dollar amount above $0." };
+  }
+  const free = headroom(state, fromCat);
+  if (cents > free) {
+    if (free < 0) {
+      return { ok: false, error: `${fromCat} is already ${money(-free)} over its limit — there is nothing to move from it.` };
+    }
+    return { ok: false, error: `${fromCat} has only ${money(free)} free — moving ${money(cents)} would put it over.` };
+  }
+  state.limits[fromCat] -= cents;
+  state.limits[toCat] += cents;
+  saveState(state);
+  return { ok: true, moved: cents, fromCat, toCat };
+}
+
+/* The one move that would help most right now: the category furthest
+   over its limit, covered from the category with the most room. The
+   amount is the smaller of the overage and the room, so a move never
+   puts its source over. Null when nothing is over, or when no budget
+   has any room to give. */
+function rebalanceSuggestion(state) {
+  const rows = spendByCategory(state.transactions);
+  let over = null;
+  for (const cat of NEST_SEED.spendCategories) {
+    const spent = rows.find((r) => r.category === cat)?.cents || 0;
+    const overBy = spent - (state.limits[cat] || 0);
+    if (overBy > 0 && (!over || overBy > over.overBy)) over = { cat, spent, overBy };
+  }
+  if (!over) return null;
+  let source = null;
+  for (const cat of NEST_SEED.spendCategories) {
+    if (cat === over.cat) continue;
+    const free = headroom(state, cat);
+    if (free > 0 && (!source || free > source.free)) source = { cat, free };
+  }
+  if (!source) return null;
+  const amount = Math.min(over.overBy, source.free);
+  return {
+    overCat: over.cat,
+    overBy: over.overBy,
+    fromCat: source.cat,
+    free: source.free,
+    amount,
+    coversAll: amount >= over.overBy,
+  };
+}
+
+/* The concrete next moves for the household, computed from its own
+   numbers — at most two, each with the exact dollars attached. A move
+   is only listed when it is real: a rebalance when something is over,
+   a savings nudge when the rate is under 15%. */
+function nextMoves(state) {
+  const moves = [];
+  const sug = rebalanceSuggestion(state);
+  if (sug) {
+    moves.push({
+      kind: "rebalance",
+      text: `${sug.overCat} is ${money(sug.overBy)} over its limit — move ${money(sug.amount)} from ${sug.fromCat} (${money(sug.free)} free)${sug.coversAll ? " and it is covered." : ", which covers part of it."}`,
+      fromCat: sug.fromCat,
+      toCat: sug.overCat,
+      amount: sug.amount,
+    });
+  }
+  const totals = sumKinds(state.transactions);
+  if (totals.income > 0) {
+    const rate = 100 * totals.saving / totals.income;
+    if (rate < 15) {
+      const short = Math.round(totals.income * 0.15) - totals.saving;
+      if (short > 0) {
+        moves.push({
+          kind: "savings",
+          text: `The savings rate is ${rate.toFixed(1)}% of income. Setting aside ${money(short)} more a month would reach 15%.`,
+        });
+      }
+    }
+  }
+  return moves;
 }
 
 /* Add a transaction. A saving entry whose category names a goal also
@@ -285,6 +451,80 @@ function transactionsCSV(list) {
     return [tx.date, tx.kind, tx.category, tx.note, amount].map(csvCell).join(",");
   });
   return head.join(",") + "\n" + rows.join("\n") + "\n";
+}
+
+/* ---- CSV import (the round trip of the CSV export) ---- */
+
+/* Split one CSV line the way the format wants: commas inside quotes
+   do not split, and a doubled quote inside a quoted field is one
+   quote. Returns null when the quotes do not balance. */
+function splitCSVLine(line) {
+  const out = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else quoted = false;
+      } else cur += ch;
+    } else if (ch === '"') {
+      quoted = true;
+    } else if (ch === ",") {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  if (quoted) return null;
+  out.push(cur);
+  return out;
+}
+
+/* Is this a real calendar date, not just four digits, a dash and
+   wishful thinking — 2026-11-31 and 2026-13-01 both fail here. */
+function isRealDate(iso) {
+  const parts = String(iso || "").split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return false;
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  return d.getFullYear() === parts[0] && d.getMonth() === parts[1] - 1 && d.getDate() === parts[2];
+}
+
+/* Read a CSV in the shape the export writes — Date, Type, Category,
+   Note, Amount — and turn it into transactions. The header row is
+   skipped, blank lines are ignored, and a row that does not check
+   out is listed in errors instead of stopping the whole import, so
+   one bad line never eats the good ones. Amounts carry the sign the
+   export writes (income +, the rest −); the type column decides the
+   kind, and the amount's size is what is stored. A leading $ and
+   thousands commas are forgiven. */
+function parseTransactionsCSV(text, state) {
+  const rows = [];
+  const errors = [];
+  const lines = String(text == null ? "" : text).split(/\r?\n/);
+  let seenHeader = false;
+  for (let ln = 0; ln < lines.length; ln++) {
+    const line = lines[ln];
+    if (!line.trim()) continue;
+    const cells = splitCSVLine(line);
+    if (cells === null) { errors.push({ line: ln + 1, reason: "unbalanced quotes" }); continue; }
+    if (!seenHeader) {
+      seenHeader = true;
+      if (cells[0].trim().toLowerCase() === "date") continue;
+    }
+    if (cells.length !== 5) { errors.push({ line: ln + 1, reason: `expected 5 columns, found ${cells.length}` }); continue; }
+    const [date, kind, category, note, amountRaw] = cells.map((c) => c.trim());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !isRealDate(date)) { errors.push({ line: ln + 1, reason: `bad date "${date}"` }); continue; }
+    if (!["income", "spending", "saving"].includes(kind)) { errors.push({ line: ln + 1, reason: `unknown type "${kind}"` }); continue; }
+    if (!categoryOptions(kind, state).includes(category)) { errors.push({ line: ln + 1, reason: `unknown category "${category}" for ${kind}` }); continue; }
+    if (!note) { errors.push({ line: ln + 1, reason: "empty note" }); continue; }
+    const amount = Number(amountRaw.replace(/^\$/, "").replace(/,/g, ""));
+    if (!Number.isFinite(amount) || amount === 0) { errors.push({ line: ln + 1, reason: `bad amount "${amountRaw}"` }); continue; }
+    rows.push({ date, kind, category, note, cents: Math.round(Math.abs(amount) * 100) });
+  }
+  return { rows, errors };
 }
 
 function createGoal(state, name, targetCents, startCents) {

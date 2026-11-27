@@ -53,7 +53,7 @@ function monthBars(nov, oct) {
     { label: "Spending", now: nov.spending, before: oct.spending },
     { label: "Savings", now: nov.saving, before: oct.saving },
   ];
-  const top = Math.max(...groups.flatMap((g) => [g.now, g.before]));
+  const top = Math.max(...groups.flatMap((g) => [g.now, g.before]), 1);
   const W = 560, H = 262, base = 200, gap = 46;
   const slot = (W - gap) / 3;
   const barW = 52;

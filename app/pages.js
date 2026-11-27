@@ -19,12 +19,6 @@ function progressBar(percent, tone) {
   return `<div class="bar"><div class="bar-fill ${tone || ""}" style="width:${p.toFixed(1)}%"></div></div>`;
 }
 
-function categoryOptions(kind, state) {
-  if (kind === "income") return NEST_SEED.incomeCategories;
-  if (kind === "saving") return state.goals.map((g) => g.name);
-  return NEST_SEED.spendCategories;
-}
-
 /* ---------------- Dashboard ---------------- */
 
 function pageDashboard(state) {
@@ -54,6 +48,7 @@ function pageDashboard(state) {
     : pace.pacePct < -0.5 ? "pace-good" : "";
   const daysWord = pace.daysLeft === 0 ? "November ends today"
     : `${pace.daysLeft} day${pace.daysLeft === 1 ? "" : "s"} left in November`;
+  const moves = nextMoves(state);
 
   return `
   <section class="hero">
@@ -66,6 +61,14 @@ function pageDashboard(state) {
     <div><span class="pace-label">Month</span><strong id="pace-days">${daysWord}</strong><span class="muted">Day ${pace.day} of ${pace.daysInMonth} · November 2026</span></div>
     <div><span class="pace-label">Safe to spend</span><strong id="pace-safe">${money(pace.safePerDay)} a day</strong><span class="muted">from ${money(pace.remaining)} left</span></div>
     <div><span class="pace-label">Pace</span><strong id="pace-word" class="${paceTone}">${paceWord}</strong><span class="muted">${money(pace.expected)} flexible spending expected by now — rent excluded</span></div>
+  </section>
+  <section class="moves" aria-label="Next moves">
+    <h2>Next moves</h2>
+    ${moves.length ? `<ul>
+      ${moves.map((m) => m.kind === "rebalance"
+        ? `<li>${esc(m.text)} <button class="btn small move-one" data-from="${esc(m.fromCat)}" data-to="${esc(m.toCat)}" data-cents="${m.amount}">Move it</button></li>`
+        : `<li>${esc(m.text)}</li>`).join("")}
+    </ul>` : `<p class="muted">Everything is on track — no moves needed this week.</p>`}
   </section>
   <section class="cards">
     <div class="stat"><span class="stat-label">Income</span><strong id="stat-income">${money(totals.income)}</strong><span class="muted">${incomeCount} ${incomeCount === 1 ? "entry" : "entries"} this month</span></div>
@@ -184,7 +187,8 @@ function pageTransactions(state, ui) {
       <label>Search <input id="flt-q" type="search" placeholder="Search notes…" value="${esc(ui.q || "")}"></label>
     </div>
     <p id="tx-totals">Showing ${list.length} of ${state.transactions.length} — income <b>${money(totals.income)}</b> · spending <b>${money(totals.spending)}</b> · saving <b>${money(totals.saving)}</b></p>
-    <p><button class="btn small" id="tx-csv" type="button">Download these ${list.length} as CSV</button> <span class="muted">Exports exactly the rows shown above — no account, no upload.</span></p>
+    <p><button class="btn small" id="tx-csv" type="button">Download these ${list.length} as CSV</button> <label class="btn small import-label" for="tx-import">Import CSV</label><input id="tx-import" type="file" accept=".csv,text/csv" hidden> <span class="muted">Exports exactly the rows shown above — no account, no upload. Import reads the same columns back in.</span></p>
+    <p class="muted" id="tx-import-msg"></p>
     <ul class="tx-list">
       ${list.map((tx) => ui.editingId === tx.id ? txEditRow(tx, state) : `<li>
         <span class="tx-date">${esc(tx.date)}</span>
@@ -203,6 +207,9 @@ function pageBudgets(state) {
   const rows = spendByCategory(state.transactions);
   const spentOf = (cat) => rows.find((r) => r.category === cat)?.cents || 0;
   const saved = sumKinds(state.transactions).saving;
+  // The move form opens pre-filled with the one move that would help
+  // most — the suggestion the dashboard's Next moves panel shows.
+  const sug = rebalanceSuggestion(state);
   const totalLimit = NEST_SEED.spendCategories
     .reduce((sum, cat) => sum + (state.limits[cat] || 0), 0);
   const totalSpent = rows.reduce((sum, r) => sum + r.cents, 0);
@@ -210,6 +217,24 @@ function pageBudgets(state) {
   <section class="panel">
     <h1>Budgets — ${esc(NEST_SEED.monthLabel)}</h1>
     <p>Monthly limits for the household. Change a limit and it sticks — limits are saved on this device.</p>
+    <div class="move-box">
+      <h2>Move money between budgets</h2>
+      <p class="muted">Shift a limit from a budget with room to one that's tight. The month's total limit stays the same — this is envelope budgeting, not new money.</p>
+      <form id="move-form" class="move-grid">
+        <label>From <select id="move-from">${NEST_SEED.spendCategories.map((c) => {
+          const free = headroom(state, c);
+          const sel = sug && c === sug.fromCat ? " selected" : "";
+          return `<option value="${esc(c)}"${sel}>${esc(c)} — ${free >= 0 ? money(free) + " free" : money(-free) + " over"}</option>`;
+        }).join("")}</select></label>
+        <label>To <select id="move-to">${NEST_SEED.spendCategories.map((c) => {
+          const sel = sug && c === sug.overCat ? " selected" : "";
+          return `<option value="${esc(c)}"${sel}>${esc(c)} — limit ${money(state.limits[c] || 0)}</option>`;
+        }).join("")}</select></label>
+        <label>Amount ($) <input id="move-amount" type="number" min="1" step="1" placeholder="30" value="${sug ? (sug.amount / 100).toFixed(0) : ""}" required></label>
+        <button class="btn" type="submit">Move limit</button>
+      </form>
+      <p class="muted" id="move-msg"></p>
+    </div>
     <div class="save-card">
       <div class="snap-head"><span><b>All nine budgets</b> <span class="muted">— the month's limits taken together</span></span><span id="budgets-total">${money(totalSpent)} of ${money(totalLimit)}</span></div>
       ${progressBar(100 * totalSpent / totalLimit, totalSpent > totalLimit ? "over" : "")}
@@ -223,6 +248,7 @@ function pageBudgets(state) {
     ${NEST_SEED.spendCategories.map((cat) => {
       const spent = spentOf(cat);
       const limit = state.limits[cat] || 0;
+      const burn = burnProjection(state, cat);
       return `<div class="budget-row">
         <div class="snap-head"><span><b>${esc(cat)}</b></span><span>${money(spent)} of <span id="limit-label-${esc(cat)}">${money(limit)}</span></span></div>
         ${progressBar(100 * spent / limit, spent > limit ? "over" : "")}
@@ -230,6 +256,7 @@ function pageBudgets(state) {
           <span class="limit-edit">Limit $ <input id="limit-${esc(cat)}" type="number" min="0" step="1" value="${(limit / 100).toFixed(0)}" aria-label="${esc(cat)} limit in dollars">
           <button class="btn small limit-save" data-cat="${esc(cat)}">Save limit</button></span>
         </div>
+        <div class="burn-line${burn.kind === "over" ? " burn-over" : ""}">${esc(burnLine(burn))}</div>
       </div>`;
     }).join("")}
   </section>`;

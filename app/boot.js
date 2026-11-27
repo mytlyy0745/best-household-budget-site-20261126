@@ -46,6 +46,18 @@ function dollarsToCents(value) {
 }
 
 function bindPage(route) {
+  if (route === "") {
+    // Dashboard "Next moves": the one-click rebalance button performs
+    // exactly the move the panel suggests, then re-renders — the hero
+    // note, the budget snapshot and the panel itself all follow.
+    document.querySelectorAll(".move-one").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        moveLimit(nestState, btn.getAttribute("data-from"), btn.getAttribute("data-to"), Number(btn.getAttribute("data-cents")));
+        render();
+      });
+    });
+  }
+
   if (route === "transactions") {
     const typeSel = document.getElementById("tx-type");
     typeSel.value = nestUi.formKind;
@@ -115,6 +127,27 @@ function bindPage(route) {
         downloadText("nest-egg-transactions.csv", transactionsCSV(rows), "text/csv;charset=utf-8");
       });
     }
+    const importInput = document.getElementById("tx-import");
+    if (importInput) {
+      importInput.addEventListener("change", () => {
+        const file = importInput.files && importInput.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const parsed = parseTransactionsCSV(String(reader.result || ""), nestState);
+          let added = 0;
+          for (const row of parsed.rows) { addTransaction(nestState, row); added++; }
+          let text = `Imported ${added} transaction${added === 1 ? "" : "s"}.`;
+          if (parsed.errors.length) {
+            const shown = parsed.errors.slice(0, 2).map((e) => `line ${e.line}: ${e.reason}`).join("; ");
+            text += ` ${parsed.errors.length} row${parsed.errors.length === 1 ? "" : "s"} skipped (${shown}${parsed.errors.length > 2 ? ", …" : ""}).`;
+          }
+          render();
+          document.getElementById("tx-import-msg").textContent = text;
+        };
+        reader.readAsText(file);
+      });
+    }
     const editForm = document.querySelector(".edit-grid");
     if (editForm) {
       const kindSel = editForm.querySelector('select[name="kind"]');
@@ -148,6 +181,26 @@ function bindPage(route) {
   }
 
   if (route === "budgets") {
+    const moveForm = document.getElementById("move-form");
+    if (moveForm) {
+      moveForm.addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const fromCat = document.getElementById("move-from").value;
+        const toCat = document.getElementById("move-to").value;
+        const cents = dollarsToCents(document.getElementById("move-amount").value);
+        const msg = document.getElementById("move-msg");
+        const res = moveLimit(nestState, fromCat, toCat, cents);
+        if (!res.ok) {
+          // Leave the form as it is so the amount the household typed
+          // is still there to fix; only the message changes.
+          msg.textContent = res.error;
+          return;
+        }
+        const text = `Moved ${money(res.moved)} of limit from ${res.fromCat} to ${res.toCat}. The month's total limit is unchanged.`;
+        render();
+        document.getElementById("move-msg").textContent = text;
+      });
+    }
     document.querySelectorAll(".limit-save").forEach((btn) => {
       btn.addEventListener("click", () => {
         const cat = btn.getAttribute("data-cat");
