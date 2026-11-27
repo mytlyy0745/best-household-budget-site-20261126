@@ -4,7 +4,20 @@
 "use strict";
 
 let nestState = loadState();
-const nestUi = { type: "", cat: "", q: "", formKind: "spending" };
+const nestUi = { type: "", cat: "", q: "", formKind: "spending", editingId: "" };
+
+/* Offer a text file as a download without any server round-trip. */
+function downloadText(filename, text, mime) {
+  const blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function currentRoute() {
   const hash = window.location.hash || "#/";
@@ -65,6 +78,7 @@ function bindPage(route) {
       nestUi.type = document.getElementById("flt-type").value;
       nestUi.cat = document.getElementById("flt-cat").value;
       nestUi.q = document.getElementById("flt-q").value;
+      nestUi.editingId = "";
       render();
       const q = document.getElementById("flt-q");
       q.focus();
@@ -76,6 +90,7 @@ function bindPage(route) {
       nestUi.type = document.getElementById("flt-type").value;
       nestUi.cat = document.getElementById("flt-cat").value;
       nestUi.q = document.getElementById("flt-q").value;
+      nestUi.editingId = "";
       render();
       const q = document.getElementById("flt-q");
       q.focus();
@@ -87,6 +102,49 @@ function bindPage(route) {
         render();
       });
     });
+    document.querySelectorAll(".tx-edit-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        nestUi.editingId = btn.getAttribute("data-id");
+        render();
+      });
+    });
+    const csvBtn = document.getElementById("tx-csv");
+    if (csvBtn) {
+      csvBtn.addEventListener("click", () => {
+        const rows = filteredTx(nestState, nestUi);
+        downloadText("nest-egg-transactions.csv", transactionsCSV(rows), "text/csv;charset=utf-8");
+      });
+    }
+    const editForm = document.querySelector(".edit-grid");
+    if (editForm) {
+      const kindSel = editForm.querySelector('select[name="kind"]');
+      kindSel.addEventListener("change", () => {
+        const catSel = editForm.querySelector('select[name="category"]');
+        catSel.innerHTML = categoryOptions(kindSel.value, nestState)
+          .map((c) => `<option>${esc(c)}</option>`).join("");
+      });
+      editForm.querySelector(".edit-cancel").addEventListener("click", () => {
+        nestUi.editingId = "";
+        render();
+      });
+      editForm.addEventListener("submit", (ev) => {
+        ev.preventDefault();
+        const id = editForm.getAttribute("data-id");
+        const cents = dollarsToCents(editForm.querySelector('input[name="amount"]').value);
+        if (!Number.isFinite(cents) || cents <= 0) return;
+        const note = editForm.querySelector('input[name="note"]').value.trim();
+        if (!note) return;
+        updateTransaction(nestState, id, {
+          date: editForm.querySelector('input[name="date"]').value || demoDateString(nestState),
+          kind: kindSel.value,
+          category: editForm.querySelector('select[name="category"]').value,
+          note,
+          cents,
+        });
+        nestUi.editingId = "";
+        render();
+      });
+    }
   }
 
   if (route === "budgets") {

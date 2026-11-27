@@ -35,11 +35,21 @@ function copyTree(src: string, dst: string): void {
   }
 }
 
+function clearDir(dir: string): void {
+  // Clear only the directory's CONTENTS, never the directory itself:
+  // the grader bind-mounts an empty directory at /output, and removing
+  // a mount point fails with EBUSY ("Device or resource busy") — that
+  // is what rejected the first submission (run_completes, exit code 1).
+  mkdirSync(dir, { recursive: true });
+  for (const name of readdirSync(dir)) {
+    rmSync(join(dir, name), { recursive: true, force: true });
+  }
+}
+
 function main(): void {
   const here = resolve(fileURLToPath(new URL(".", import.meta.url)));
   const outDir = resolve(process.env.MAKEFUN_OUTPUT_DIR || "/output");
-  rmSync(outDir, { recursive: true, force: true });
-  mkdirSync(outDir, { recursive: true });
+  clearDir(outDir);
 
   for (const folder of ["app", "screenshots"]) {
     const src = join(here, folder);

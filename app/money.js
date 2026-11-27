@@ -123,6 +123,17 @@ function demoToday(state) {
   return { year, month, day, daysInMonth: last, daysLeft: last - day };
 }
 
+/* The demo "today" as an ISO date, e.g. "2026-11-25": the day the
+   ledger is on, so anything the household adds (a goal top-up, an
+   edited transaction) is dated inside the demo month instead of on
+   the real calendar day the browser happens to be opened. */
+function demoDateString(state) {
+  const t = demoToday(state);
+  const mm = String(t.month).padStart(2, "0");
+  const dd = String(t.day).padStart(2, "0");
+  return `${t.year}-${mm}-${dd}`;
+}
+
 /* How November is pacing: what is safe to spend each remaining day,
    and whether the flexible spending is ahead of or behind the plan
    for this point in the month. Categories whose money lands as one
@@ -166,7 +177,7 @@ function weeklySpending(list) {
     { label: "Nov 1–7", from: 1, to: 7, cents: 0 },
     { label: "Nov 8–14", from: 8, to: 14, cents: 0 },
     { label: "Nov 15–21", from: 15, to: 21, cents: 0 },
-    { label: "Nov 22–30", from: 22, to: 31, cents: 0 },
+    { label: "Nov 22–30", from: 22, to: 30, cents: 0 },
   ];
   for (const tx of list) {
     if (tx.kind !== "spending") continue;
@@ -225,7 +236,7 @@ function addToGoal(state, goalId, cents) {
   goal.saved += cents;
   const tx = {
     id: nextTxId(state),
-    date: new Date().toISOString().slice(0, 10),
+    date: demoDateString(state),
     kind: "saving",
     category: goal.name,
     note: "Added to " + goal.name,
@@ -234,6 +245,46 @@ function addToGoal(state, goalId, cents) {
   state.transactions.push(tx);
   saveState(state);
   return goal;
+}
+
+/* Change one transaction in place, keeping its id. A saving entry's
+   goal is unwound for the old values and re-applied for the new ones,
+   so editing an amount, a category or a kind can never leave a goal
+   out of step with the ledger. Returns false when the id is unknown. */
+function updateTransaction(state, id, fields) {
+  const at = state.transactions.findIndex((tx) => tx.id === id);
+  if (at < 0) return false;
+  const old = state.transactions[at];
+  if (old.kind === "saving") {
+    const g = state.goals.find((x) => x.name === old.category);
+    if (g) g.saved = Math.max(0, g.saved - old.cents);
+  }
+  const updated = { ...old, ...fields, id };
+  state.transactions[at] = updated;
+  if (updated.kind === "saving") {
+    const g = state.goals.find((x) => x.name === updated.category);
+    if (g) g.saved += updated.cents;
+  }
+  saveState(state);
+  return true;
+}
+
+/* The ledger as a CSV download: one row a transaction, amounts in
+   dollars with the sign the row carries on screen (income +, the
+   rest −). Notes are quoted and doubled the way CSV wants. */
+function csvCell(value) {
+  const s = String(value == null ? "" : value);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function transactionsCSV(list) {
+  const head = ["Date", "Type", "Category", "Note", "Amount"];
+  const rows = list.map((tx) => {
+    const sign = tx.kind === "income" ? 1 : -1;
+    const amount = (sign * tx.cents / 100).toFixed(2);
+    return [tx.date, tx.kind, tx.category, tx.note, amount].map(csvCell).join(",");
+  });
+  return head.join(",") + "\n" + rows.join("\n") + "\n";
 }
 
 function createGoal(state, name, targetCents, startCents) {

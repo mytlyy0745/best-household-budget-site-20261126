@@ -206,6 +206,25 @@ h2 { font-size: 22px; }
   color: var(--muted); cursor: pointer; padding: 3px 9px; font-size: 13px;
 }
 .tx-del:hover { border-color: var(--red); color: var(--red); }
+.tx-edit-btn {
+  background: none; border: 1px solid var(--line); border-radius: 7px;
+  color: var(--muted); cursor: pointer; padding: 3px 9px; font-size: 13px;
+}
+.tx-edit-btn:hover { border-color: var(--pine); color: var(--pine); }
+
+/* Inline edit row: the form takes the whole row and wraps on narrow screens. */
+.tx-edit { flex-wrap: wrap; }
+.edit-grid {
+  display: grid;
+  grid-template-columns: 150px 130px 160px 1fr 120px auto;
+  gap: 10px;
+  align-items: end;
+  width: 100%;
+}
+.edit-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
+.edit-grid input, .edit-grid select { padding: 7px 9px; font-size: 14px; }
+.edit-actions { display: flex; gap: 8px; }
+.btn.ghost-dark { background: transparent; color: var(--pine); border: 1px solid var(--line); }
 
 /* Forms */
 .form-grid {
@@ -266,6 +285,7 @@ input, select {
   .pace { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+  .edit-grid { grid-template-columns: 1fr 1fr; }
   .topbar { gap: 10px; padding: 10px 14px; }
   .nav-link { padding: 6px 8px; font-size: 14px; }
   .activity li, .tx-list li { flex-wrap: wrap; }

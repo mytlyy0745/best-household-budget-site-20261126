@@ -44,6 +44,8 @@ function pageDashboard(state) {
   const recent = [...state.transactions]
     .sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id)).slice(0, 5);
   const kindWord = { income: "Income", spending: "Spent", saving: "Saved" };
+  const incomeCount = state.transactions.filter((t) => t.kind === "income").length;
+  const spendCount = state.transactions.filter((t) => t.kind === "spending").length;
   const pace = monthPace(state);
   const paceWord = Math.abs(pace.pacePct) < 0.5 ? "right on pace"
     : pace.pacePct > 0 ? `${pace.pacePct.toFixed(1)}% ahead of pace`
@@ -66,9 +68,9 @@ function pageDashboard(state) {
     <div><span class="pace-label">Pace</span><strong id="pace-word" class="${paceTone}">${paceWord}</strong><span class="muted">${money(pace.expected)} flexible spending expected by now — rent excluded</span></div>
   </section>
   <section class="cards">
-    <div class="stat"><span class="stat-label">Income</span><strong id="stat-income">${money(totals.income)}</strong><span class="muted">5 paydays and extras</span></div>
-    <div class="stat"><span class="stat-label">Spending</span><strong id="stat-spending">${money(totals.spending)}</strong><span class="muted">${state.transactions.filter((t) => t.kind === "spending").length} purchases</span></div>
-    <div class="stat"><span class="stat-label">Savings</span><strong id="stat-saving">${money(totals.saving)}</strong><span class="muted">into 3 goals</span></div>
+    <div class="stat"><span class="stat-label">Income</span><strong id="stat-income">${money(totals.income)}</strong><span class="muted">${incomeCount} ${incomeCount === 1 ? "entry" : "entries"} this month</span></div>
+    <div class="stat"><span class="stat-label">Spending</span><strong id="stat-spending">${money(totals.spending)}</strong><span class="muted">${spendCount} purchases</span></div>
+    <div class="stat"><span class="stat-label">Savings</span><strong id="stat-saving">${money(totals.saving)}</strong><span class="muted">into ${state.goals.length} ${state.goals.length === 1 ? "goal" : "goals"}</span></div>
     <div class="stat highlight"><span class="stat-label">Remaining</span><strong id="stat-remaining">${money(totals.remaining)}</strong><span class="muted">free to spend or save</span></div>
   </section>
   <div class="two-col">
@@ -120,6 +122,24 @@ function filteredTx(state, ui) {
   }).sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id));
 }
 
+function txEditRow(tx, state) {
+  const cats = categoryOptions(tx.kind, state);
+  return `<li class="tx-edit">
+    <form class="edit-grid" data-id="${esc(tx.id)}">
+      <label>Date <input name="date" type="date" value="${esc(tx.date)}" required></label>
+      <label>Type <select name="kind">
+        <option value="spending"${tx.kind === "spending" ? " selected" : ""}>Spending</option>
+        <option value="income"${tx.kind === "income" ? " selected" : ""}>Income</option>
+        <option value="saving"${tx.kind === "saving" ? " selected" : ""}>Saving</option>
+      </select></label>
+      <label>Category <select name="category">${cats.map((c) => `<option${c === tx.category ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
+      <label>Note <input name="note" type="text" value="${esc(tx.note)}" maxlength="80" required></label>
+      <label>Amount ($) <input name="amount" type="number" min="0.01" step="0.01" value="${(tx.cents / 100).toFixed(2)}" required></label>
+      <span class="edit-actions"><button class="btn small" type="submit">Save</button> <button class="btn small ghost-dark edit-cancel" type="button">Cancel</button></span>
+    </form>
+  </li>`;
+}
+
 function pageTransactions(state, ui) {
   const list = filteredTx(state, ui);
   const totals = sumKinds(list);
@@ -129,7 +149,7 @@ function pageTransactions(state, ui) {
   <section class="panel">
     <h1>Add a transaction</h1>
     <form id="tx-form" class="form-grid">
-      <label>Date <input id="tx-date" type="date" value="2026-11-26" required></label>
+      <label>Date <input id="tx-date" type="date" value="${demoDateString(state)}" required></label>
       <label>Type
         <select id="tx-type">
           <option value="spending">Spending</option>
@@ -164,11 +184,13 @@ function pageTransactions(state, ui) {
       <label>Search <input id="flt-q" type="search" placeholder="Search notes…" value="${esc(ui.q || "")}"></label>
     </div>
     <p id="tx-totals">Showing ${list.length} of ${state.transactions.length} — income <b>${money(totals.income)}</b> · spending <b>${money(totals.spending)}</b> · saving <b>${money(totals.saving)}</b></p>
+    <p><button class="btn small" id="tx-csv" type="button">Download these ${list.length} as CSV</button> <span class="muted">Exports exactly the rows shown above — no account, no upload.</span></p>
     <ul class="tx-list">
-      ${list.map((tx) => `<li>
+      ${list.map((tx) => ui.editingId === tx.id ? txEditRow(tx, state) : `<li>
         <span class="tx-date">${esc(tx.date)}</span>
         <span class="tx-note">${esc(tx.note)} <span class="muted">· ${esc(tx.category)}</span></span>
         <b class="amt-${tx.kind}">${tx.kind === "income" ? "+" : "−"}${money(tx.cents)}</b>
+        <button class="tx-edit-btn" data-id="${esc(tx.id)}" aria-label="Edit ${esc(tx.note)}">Edit</button>
         <button class="tx-del" data-id="${esc(tx.id)}" aria-label="Delete ${esc(tx.note)}">Delete</button>
       </li>`).join("") || `<li class="muted">Nothing matches those filters.</li>`}
     </ul>
