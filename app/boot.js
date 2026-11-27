@@ -126,6 +126,12 @@ function bindPage(route) {
     const refilter = () => {
       nestUi.type = document.getElementById("flt-type").value;
       nestUi.cat = document.getElementById("flt-cat").value;
+      // The category list follows the type: if the type just changed
+      // to one the chosen category cannot belong to, drop the category
+      // instead of showing a list that can never match anything.
+      if (nestUi.type && nestUi.cat && !categoryOptions(nestUi.type, nestState).includes(nestUi.cat)) {
+        nestUi.cat = "";
+      }
       nestUi.q = document.getElementById("flt-q").value;
       nestUi.editingId = "";
       render();

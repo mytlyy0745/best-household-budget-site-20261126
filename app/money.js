@@ -493,6 +493,97 @@ function goalPlanLine(goal, state) {
   return `At ${money(plan.pace)} a month it takes about ${plan.monthsAtPace} months — ${money(plan.need12 - plan.pace)} more a month would finish it in 12.`;
 }
 
+/* An ISO date as a short "Sun, Nov 1", built from its parts so no
+   timezone can shift the day. */
+function dayLabel(iso) {
+  const parts = String(iso || "").split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return String(iso || "");
+  return new Date(parts[0], parts[1] - 1, parts[2])
+    .toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+/* The month's best and worst days, by net money: income minus
+   spending minus saving for each day. Payday is usually the best day
+   even when rent lands on it — Nov 1 takes in $4,200.00 and pays out
+   $958.97, so it is +$3,241.03 and also the biggest-spending day —
+   while the worst day is the one that quietly took the most out, Nov 5
+   at −$420.00. Only the seed month counts, like the daily chart. */
+function dayNetSummary(state) {
+  const prefix = NEST_SEED.month + "-";
+  const byDay = new Map();
+  for (const tx of state.transactions) {
+    if (!String(tx.date || "").startsWith(prefix)) continue;
+    if (!byDay.has(tx.date)) {
+      byDay.set(tx.date, { date: tx.date, income: 0, spending: 0, saving: 0 });
+    }
+    const d = byDay.get(tx.date);
+    if (d[tx.kind] !== undefined) d[tx.kind] += tx.cents;
+  }
+  const days = [...byDay.values()].map((d) => ({
+    ...d,
+    net: d.income - d.spending - d.saving,
+    label: dayLabel(d.date),
+  }));
+  if (!days.length) return { best: null, worst: null, single: false };
+  const best = days.reduce((a, b) => (b.net > a.net ? b : a), days[0]);
+  const worst = days.reduce((a, b) => (b.net < a.net ? b : a), days[0]);
+  return { best, worst, single: best.date === worst.date };
+}
+
+/* A day's net as one short line: only the kinds that actually
+   happened that day are shown, with the sign each kind carries. */
+function dayNetLine(d) {
+  const bits = [];
+  if (d.income > 0) bits.push(`income +${money(d.income)}`);
+  if (d.spending > 0) bits.push(`spending −${money(d.spending)}`);
+  if (d.saving > 0) bits.push(`saving −${money(d.saving)}`);
+  return bits.join(" · ");
+}
+
+/* The regular bills, with whether each one has actually been paid
+   this month: a bill counts as paid when the ledger holds a spending
+   transaction in its category for exactly its amount inside the seed
+   month — the seed's four bills each mirror one such transaction, so
+   deleting or editing that transaction flips the bill to unpaid,
+   which is the honest answer. A bill whose day has passed unpaid is
+   overdue; one whose day is still ahead is simply due. */
+function regularBills(state) {
+  const prefix = NEST_SEED.month + "-";
+  const today = demoToday(state);
+  const total = NEST_SEED.recurring.reduce((sum, b) => sum + b.cents, 0);
+  const rows = NEST_SEED.recurring.map((b) => {
+    const paid = state.transactions.some((tx) =>
+      tx.kind === "spending" && tx.category === b.category && tx.cents === b.cents &&
+      String(tx.date || "").startsWith(prefix));
+    const status = paid ? "paid" : (b.day <= today.day ? "overdue" : "due");
+    return { ...b, paid, status };
+  });
+  return { rows, total, paidTotal: rows.filter((r) => r.paid).reduce((s, r) => s + r.cents, 0) };
+}
+
+/* The next bill the household still has to pay, in plain words: the
+   nearest unpaid bill, dated in December when its November day has
+   already passed — or, when every bill is paid, the first one of next
+   month. */
+function nextBillLine(state) {
+  const bills = regularBills(state);
+  const unpaid = bills.rows.filter((r) => !r.paid);
+  if (!unpaid.length) {
+    const first = [...bills.rows].sort((a, b) => a.day - b.day)[0];
+    if (!first) return "";
+    const parts = NEST_SEED.month.split("-").map(Number);
+    const next = new Date(parts[0], parts[1], first.day);
+    const when = next.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return `All November bills are paid — next is ${first.name}, ${money(first.cents)} on ${when}.`;
+  }
+  const next = [...unpaid].sort((a, b) => a.day - b.day)[0];
+  const due = monthDay(`${NEST_SEED.month}-${String(next.day).padStart(2, "0")}`);
+  if (next.status === "overdue") {
+    return `Next bill to pay: ${next.name} — ${money(next.cents)}, due ${due} and still unpaid.`;
+  }
+  return `Next bill to pay: ${next.name} — ${money(next.cents)} on ${due}.`;
+}
+
 /* Group a transaction list by day, newest day first: each group
    carries its own totals, so a day's spending, income and saving are
    visible without adding them up by hand. The groups follow whatever
@@ -507,10 +598,7 @@ function groupTransactionsByDay(list) {
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([date, txs]) => {
       const totals = sumKinds(txs);
-      const parts = date.split("-").map(Number);
-      const label = new Date(parts[0], parts[1] - 1, parts[2])
-        .toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-      return { date, label, txs, totals, count: txs.length };
+      return { date, label: dayLabel(date), txs, totals, count: txs.length };
     });
 }
 
@@ -821,6 +909,13 @@ function monthReport(state) {
     const limit = state.limits[cat] || 0;
     lines.push(`  ${cat}: ${money(spent)} of ${money(limit)} — ${budgetStatus(spent, limit)}`);
   }
+  lines.push("");
+  lines.push("Regular bills");
+  const bills = regularBills(state);
+  for (const b of bills.rows) {
+    lines.push(`  ${b.name}: ${money(b.cents)} on day ${b.day} — ${b.paid ? "paid" : b.status === "overdue" ? "not paid yet (due date passed)" : "due"}`);
+  }
+  lines.push(`  ${money(bills.paidTotal)} of ${money(bills.total)} paid this month. ${nextBillLine(state)}`);
   lines.push("");
   lines.push("Spending vs October");
   for (const r of categoryMonthComparison(state)) {

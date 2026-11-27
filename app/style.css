@@ -128,6 +128,24 @@ h2 { font-size: 22px; }
 .pace strong.pace-good { color: var(--green); }
 .pace .muted { font-size: 13px; }
 
+/* Best / worst day strip: same card language as the pace strip, two
+   cells instead of three. */
+.days {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.days > div {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--pine-soft);
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+.days strong { display: block; font-family: var(--serif); font-size: 21px; color: var(--pine-dark); margin: 4px 0 2px; }
+.days .muted { font-size: 13px; }
+
 /* Next moves panel */
 .moves {
   background: var(--card);
@@ -301,7 +319,13 @@ input, select {
 .fund-row label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
 .fund-row input { width: 130px; }
 
-/* Insights */
+/* Regular bills on the Budgets page: one row per bill, name on the
+   left, amount and status on the right. */
+.bills { list-style: none; margin: 10px 0 0; padding: 0; }
+.bills li { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid #e3dcc4; font-size: 15px; }
+.bills li:last-child { border-bottom: none; }
+.bill-name { flex: 1; }
+.bills-card .snap-foot { margin-top: 8px; }
 .bars { width: 100%; height: auto; }
 .gauge { width: 100%; max-width: 300px; height: auto; display: block; }
 .gauge-num { font-family: var(--serif); font-size: 26px; font-weight: bold; fill: var(--pine-dark); }
@@ -361,6 +385,7 @@ input, select {
 @media (max-width: 720px) {
   .cards { grid-template-columns: 1fr 1fr; }
   .pace { grid-template-columns: 1fr; }
+  .days { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .move-grid { grid-template-columns: 1fr; }

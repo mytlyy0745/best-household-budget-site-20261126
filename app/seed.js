@@ -46,6 +46,16 @@ const NEST_SEED = {
     Subscriptions: 4000,
   },
   savingsTarget: 60000,
+  /* The bills that land every month, on the same day, for the same
+     amount — the fixed outgoings the household can count on. Each one
+     mirrors a transaction in the ledger below, so the Budgets page
+     can say whether it has actually been paid this month. */
+  recurring: [
+    { name: "November rent", category: "Housing", cents: 92000, day: 1 },
+    { name: "Streaming bundle", category: "Subscriptions", cents: 3897, day: 1 },
+    { name: "Electricity bill", category: "Utilities", cents: 13245, day: 10 },
+    { name: "Internet and phone", category: "Utilities", cents: 8999, day: 12 },
+  ],
   goals: [
     { id: "emergency", name: "Emergency fund", saved: 321000, target: 500000, note: "Six months of essentials, for the things nobody plans." },
     { id: "japan", name: "Japan trip", saved: 112000, target: 240000, note: "Two weeks in Kyoto and Tokyo next spring." },

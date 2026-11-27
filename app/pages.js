@@ -73,6 +73,7 @@ function pageDashboard(state) {
   const daysWord = pace.daysLeft === 0 ? "November ends today"
     : `${pace.daysLeft} day${pace.daysLeft === 1 ? "" : "s"} left in November`;
   const moves = nextMoves(state);
+  const dayNet = dayNetSummary(state);
 
   return `
   <section class="hero">
@@ -99,6 +100,13 @@ function pageDashboard(state) {
     <div class="stat"><span class="stat-label">Spending</span><strong id="stat-spending">${money(totals.spending)}</strong><span class="muted">${spendCount} purchases</span></div>
     <div class="stat"><span class="stat-label">Savings</span><strong id="stat-saving">${money(totals.saving)}</strong><span class="muted">into ${state.goals.length} ${state.goals.length === 1 ? "goal" : "goals"}</span></div>
     <div class="stat highlight"><span class="stat-label">Remaining</span><strong id="stat-remaining">${money(totals.remaining)}</strong><span class="muted">free to spend or save</span></div>
+  </section>
+  <section class="days" aria-label="Best and worst days">
+    ${dayNet.best === null ? `<div><span class="pace-label">Best day</span><strong>No days with money in or out yet</strong><span class="muted">Add a transaction and the best and worst days show up here.</span></div>` : dayNet.single
+      ? `<div><span class="pace-label">Best day</span><strong id="best-day">${esc(dayNet.best.label)} — ${dayNet.best.net >= 0 ? "+" : "−"}${money(Math.abs(dayNet.best.net))}</strong><span class="muted">${esc(dayNetLine(dayNet.best))}</span></div>
+    <div><span class="pace-label">Worst day</span><strong>Only one day has money in or out so far</strong><span class="muted">The best and worst day are the same day until a second one has any money.</span></div>`
+      : `<div><span class="pace-label">Best day</span><strong id="best-day">${esc(dayNet.best.label)} — ${dayNet.best.net >= 0 ? "+" : "−"}${money(Math.abs(dayNet.best.net))}</strong><span class="muted">${esc(dayNetLine(dayNet.best))}</span></div>
+    <div><span class="pace-label">Worst day</span><strong id="worst-day">${esc(dayNet.worst.label)} — ${dayNet.worst.net >= 0 ? "+" : "−"}${money(Math.abs(dayNet.worst.net))}</strong><span class="muted">${esc(dayNetLine(dayNet.worst))}</span></div>`}
   </section>
   <div class="two-col">
     <section class="panel">
@@ -170,7 +178,12 @@ function txEditRow(tx, state) {
 function pageTransactions(state, ui) {
   const list = filteredTx(state, ui);
   const totals = sumKinds(list);
-  const cats = ["", ...NEST_SEED.spendCategories, ...NEST_SEED.incomeCategories, ...state.goals.map((g) => g.name)];
+  // The category filter only offers what the chosen type can actually
+  // have: picking "spending" and then "Salary" could never match a
+  // row, so those options are not shown. With no type chosen, every
+  // category is on offer.
+  const cats = ui.type ? categoryOptions(ui.type, state)
+    : ["", ...NEST_SEED.spendCategories, ...NEST_SEED.incomeCategories, ...state.goals.map((g) => g.name)];
   const formCats = categoryOptions(ui.formKind || "spending", state);
   return `
   <section class="panel">
@@ -271,6 +284,14 @@ function pageBudgets(state) {
       <div class="snap-head"><span><b>Savings target</b> <span class="muted">— the amount set aside each month</span></span><span>${money(saved)} of ${money(NEST_SEED.savingsTarget)}</span></div>
       ${progressBar(100 * saved / NEST_SEED.savingsTarget, "goal")}
       <div class="snap-foot"><span>${pctOf(saved, NEST_SEED.savingsTarget)} saved</span>${statusPill(budgetStatus(saved, NEST_SEED.savingsTarget))}</div>
+    </div>
+    <div class="save-card bills-card">
+      <div class="snap-head"><span><b>Regular bills</b> <span class="muted">— the fixed amounts that land every month</span></span><span id="bills-total">${money(regularBills(state).paidTotal)} of ${money(regularBills(state).total)} paid</span></div>
+      <ul class="bills">
+        ${regularBills(state).rows.map((b) => `
+        <li><span class="bill-name">${esc(b.name)} <span class="muted">· ${esc(b.category)} · day ${b.day}</span></span><b>${money(b.cents)}</b>${b.status === "paid" ? `<span class="pill pill-targetmet">Paid</span>` : b.status === "overdue" ? `<span class="pill pill-overbudget">Not paid yet</span>` : `<span class="pill">Due Nov ${b.day}</span>`}</li>`).join("")}
+      </ul>
+      <div class="snap-foot"><span class="muted" id="bills-next">${esc(nextBillLine(state))}</span></div>
     </div>
     ${NEST_SEED.spendCategories.map((cat) => {
       const spent = spentOf(cat);
