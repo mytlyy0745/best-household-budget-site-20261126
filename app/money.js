@@ -236,6 +236,37 @@ function savingsRate(state) {
   };
 }
 
+/* What a category's budget looks like right now: what is spent, the
+   limit, how far over it is (or how much room is left). The
+   add-transaction form uses this to say the consequence out loud
+   instead of just "Added". */
+function budgetImpact(state, cat) {
+  const spent = spendByCategory(state.transactions)
+    .find((r) => r.category === cat)?.cents || 0;
+  const limit = state.limits[cat] || 0;
+  return {
+    cat,
+    spent,
+    limit,
+    overBy: Math.max(0, spent - limit),
+    left: Math.max(0, limit - spent),
+    pct: limit > 0 ? 100 * spent / limit : (spent > 0 ? Infinity : 0),
+  };
+}
+
+/* One plain sentence about what just happened to a budget, or "" when
+   there is nothing worth saying — a small spend well inside its limit
+   needs no announcement. */
+function budgetImpactLine(impact) {
+  if (impact.overBy > 0) {
+    return `${impact.cat} is now ${money(impact.overBy)} over its ${money(impact.limit)} limit.`;
+  }
+  if (impact.limit > 0 && impact.pct >= 80) {
+    return `${impact.cat} is now at ${pctOf(impact.spent, impact.limit)} of its ${money(impact.limit)} limit — ${money(impact.left)} left.`;
+  }
+  return "";
+}
+
 /* An ISO date as a short "Nov 28", built from its parts so no
    timezone can shift the day. */
 function monthDay(iso) {
@@ -572,4 +603,59 @@ function createGoal(state, name, targetCents, startCents) {
   state.goals.push(goal);
   saveState(state);
   return goal;
+}
+
+/* The month as a plain-text report the household can keep: totals,
+   every budget against its limit, every goal with its pace and finish
+   date, the savings rate, and the two lines that matter most — what is
+   over, and how far the savings rate is from its target. Pure text,
+   no network — the Insights page offers it as a download. */
+function monthReport(state) {
+  const totals = sumKinds(state.transactions);
+  const rows = spendByCategory(state.transactions);
+  const sr = savingsRate(state);
+  const pace = monthPace(state);
+  const lines = [];
+  lines.push(`NEST EGG — ${NEST_SEED.monthLabel} report`);
+  lines.push(`The Chen household · day ${pace.day} of ${pace.daysInMonth} · ${pace.daysLeft} day${pace.daysLeft === 1 ? "" : "s"} left`);
+  lines.push("");
+  lines.push(`Income   ${money(totals.income)}`);
+  lines.push(`Spending ${money(totals.spending)}`);
+  lines.push(`Savings  ${money(totals.saving)}`);
+  lines.push(`Left     ${money(totals.remaining)}`);
+  lines.push(`Savings rate ${sr.rate.toFixed(1)}% of income (target ${sr.targetRate}%)`);
+  lines.push("");
+  lines.push("Budgets");
+  for (const cat of NEST_SEED.spendCategories) {
+    const spent = rows.find((r) => r.category === cat)?.cents || 0;
+    const limit = state.limits[cat] || 0;
+    lines.push(`  ${cat}: ${money(spent)} of ${money(limit)} — ${budgetStatus(spent, limit)}`);
+  }
+  lines.push("");
+  lines.push("Goals");
+  for (const g of state.goals) {
+    const proj = goalProjection(g, state);
+    const when = proj.monthsLeft === 0 ? "target reached"
+      : proj.monthsLeft === null ? "no saving pace yet"
+      : `about ${proj.monthsLeft} month${proj.monthsLeft === 1 ? "" : "s"} to go, around ${proj.finishLabel}`;
+    lines.push(`  ${g.name}: ${money(g.saved)} of ${money(g.target)} (${pctOf(g.saved, g.target)}) — ${when}`);
+  }
+  lines.push("");
+  lines.push("Biggest spending");
+  rows.slice(0, 5).forEach((r, i) => lines.push(`  ${i + 1}. ${r.category} — ${money(r.cents)}`));
+  lines.push("");
+  lines.push("Notes");
+  const over = NEST_SEED.spendCategories.filter((cat) => {
+    const spent = rows.find((r) => r.category === cat)?.cents || 0;
+    return spent > (state.limits[cat] || 0);
+  });
+  lines.push(over.length
+    ? `  Over budget: ${over.map((cat) => `${cat} ${money((rows.find((r) => r.category === cat)?.cents || 0) - (state.limits[cat] || 0))} over`).join(", ")}.`
+    : "  No budget is over its limit this month.");
+  lines.push(sr.rate >= sr.targetRate
+    ? `  Savings rate ${sr.rate.toFixed(1)}% is above the ${sr.targetRate}% target.`
+    : `  Savings rate ${sr.rate.toFixed(1)}% is ${money(sr.short)} a month short of the ${sr.targetRate}% target.`);
+  lines.push("");
+  lines.push("Made with Nest Egg — demo data for the Chen household, November 2026.");
+  return lines.join("\n") + "\n";
 }

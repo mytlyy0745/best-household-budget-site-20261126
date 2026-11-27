@@ -88,16 +88,26 @@ function bindPage(route) {
         msg.textContent = "Enter an amount above $0.00.";
         return;
       }
+      const kind = document.getElementById("tx-type").value;
+      const category = document.getElementById("tx-category").value;
       addTransaction(nestState, {
         date: document.getElementById("tx-date").value || "2026-11-26",
-        kind: document.getElementById("tx-type").value,
-        category: document.getElementById("tx-category").value,
+        kind,
+        category,
         note: document.getElementById("tx-note").value.trim(),
         cents,
       });
-      msg.textContent = "Added — the totals below already include it.";
+      // Say the consequence out loud: a spending entry that pushes its
+      // budget over (or close to) its limit says so right here, while
+      // the numbers are still fresh — instead of waiting for the
+      // household to notice on the Budgets page.
+      let text = "Added — the totals below already include it.";
+      if (kind === "spending") {
+        const line = budgetImpactLine(budgetImpact(nestState, category));
+        if (line) text += " " + line;
+      }
       render();
-      document.getElementById("tx-msg").textContent = "Added — the totals below already include it.";
+      document.getElementById("tx-msg").textContent = text;
     });
     const refilter = () => {
       nestUi.type = document.getElementById("flt-type").value;
@@ -180,15 +190,25 @@ function bindPage(route) {
         if (!Number.isFinite(cents) || cents <= 0) return;
         const note = editForm.querySelector('input[name="note"]').value.trim();
         if (!note) return;
+        const kind = kindSel.value;
+        const category = editForm.querySelector('select[name="category"]').value;
         updateTransaction(nestState, id, {
           date: editForm.querySelector('input[name="date"]').value || demoDateString(nestState),
-          kind: kindSel.value,
-          category: editForm.querySelector('select[name="category"]').value,
+          kind,
+          category,
           note,
           cents,
         });
         nestUi.editingId = "";
+        // Same consequence line as a fresh add: an edit can push a
+        // budget over just as easily, so it says so in the same place.
+        let text = "Saved — the totals below already include the change.";
+        if (kind === "spending") {
+          const line = budgetImpactLine(budgetImpact(nestState, category));
+          if (line) text += " " + line;
+        }
         render();
+        document.getElementById("tx-msg").textContent = text;
       });
     }
   }
@@ -258,6 +278,13 @@ function bindPage(route) {
   }
 
   if (route === "insights") {
+    const reportBtn = document.getElementById("report-download");
+    if (reportBtn) {
+      reportBtn.addEventListener("click", () => {
+        downloadText("nest-egg-november-2026-report.txt", monthReport(nestState), "text/plain;charset=utf-8");
+        document.getElementById("report-msg").textContent = "Report downloaded — totals, budgets, goals and the savings rate, as one text file.";
+      });
+    }
     document.getElementById("reset-demo").addEventListener("click", () => {
       nestState = resetState();
       nestUi.type = ""; nestUi.cat = ""; nestUi.q = "";

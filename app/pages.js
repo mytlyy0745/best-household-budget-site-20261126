@@ -9,6 +9,27 @@ function esc(s) {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+/* Wrap the parts of already-escaped text that match the search query
+   in <mark>, keeping the original casing: the query is matched
+   case-insensitively, but the text shown is the text as typed. Both
+   sides are escaped the same way first, so a query containing & or a
+   quote still matches the escaped note, and <mark> is the only markup
+   this adds. An empty query returns the text untouched. */
+function highlightMatch(escapedText, q) {
+  const needle = esc(q || "").trim().toLowerCase();
+  if (!needle) return escapedText;
+  const hay = escapedText.toLowerCase();
+  let out = "";
+  let at = 0;
+  let hit = hay.indexOf(needle, at);
+  while (hit >= 0) {
+    out += escapedText.slice(at, hit) + "<mark>" + escapedText.slice(hit, hit + needle.length) + "</mark>";
+    at = hit + needle.length;
+    hit = hay.indexOf(needle, at);
+  }
+  return out + escapedText.slice(at);
+}
+
 function statusPill(status) {
   const cls = status.replace(/[^a-z]/gi, "").toLowerCase();
   return `<span class="pill pill-${cls}">${status}</span>`;
@@ -168,7 +189,7 @@ function pageTransactions(state, ui) {
       <label>Amount ($) <input id="tx-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
       <button class="btn" id="tx-submit" type="submit">Add transaction</button>
     </form>
-    <p class="muted" id="tx-msg"></p>
+    <p class="muted" id="tx-msg" aria-live="polite"></p>
   </section>
   <section class="panel">
     <h1>Transactions</h1>
@@ -191,11 +212,11 @@ function pageTransactions(state, ui) {
     </div>
     <p id="tx-totals">Showing ${list.length} of ${state.transactions.length} — income <b>${money(totals.income)}</b> · spending <b>${money(totals.spending)}</b> · saving <b>${money(totals.saving)}</b></p>
     <p><button class="btn small" id="tx-csv" type="button">Download these ${list.length} as CSV</button> <label class="btn small import-label" for="tx-import">Import CSV</label><input id="tx-import" type="file" accept=".csv,text/csv" hidden> <span class="muted">Exports exactly the rows shown above — no account, no upload. Import reads the same columns back in.</span></p>
-    <p class="muted" id="tx-import-msg"></p>
+    <p class="muted" id="tx-import-msg" aria-live="polite"></p>
     <ul class="tx-list">
       ${list.map((tx) => ui.editingId === tx.id ? txEditRow(tx, state) : `<li>
         <span class="tx-date">${esc(tx.date)}</span>
-        <span class="tx-note">${esc(tx.note)} <span class="muted">· ${esc(tx.category)}</span></span>
+        <span class="tx-note">${highlightMatch(esc(tx.note), ui.q)} <span class="muted">· ${highlightMatch(esc(tx.category), ui.q)}</span></span>
         <b class="amt-${tx.kind}">${tx.kind === "income" ? "+" : "−"}${money(tx.cents)}</b>
         <button class="tx-edit-btn" data-id="${esc(tx.id)}" aria-label="Edit ${esc(tx.note)}">Edit</button>
         <button class="tx-del" data-id="${esc(tx.id)}" aria-label="Delete ${esc(tx.note)}">Delete</button>
@@ -236,7 +257,7 @@ function pageBudgets(state) {
         <label>Amount ($) <input id="move-amount" type="number" min="1" step="1" placeholder="30" value="${sug ? (sug.amount / 100).toFixed(0) : ""}" required></label>
         <button class="btn" type="submit">Move limit</button>
       </form>
-      <p class="muted" id="move-msg"></p>
+      <p class="muted" id="move-msg" aria-live="polite"></p>
     </div>
     <div class="save-card">
       <div class="snap-head"><span><b>All nine budgets</b> <span class="muted">— the month's limits taken together</span></span><span id="budgets-total">${money(totalSpent)} of ${money(totalLimit)}</span></div>
@@ -297,7 +318,7 @@ function pageGoals(state) {
       <label>Starting amount ($) <input id="goal-start" type="number" min="0" step="1" value="0"></label>
       <button class="btn" id="goal-create" type="submit">Create goal</button>
     </form>
-    <p class="muted" id="goal-msg"></p>
+    <p class="muted" id="goal-msg" aria-live="polite"></p>
   </section>`;
 }
 
@@ -316,7 +337,6 @@ function pageInsights(state) {
   const over = NEST_SEED.spendCategories
     .map((cat) => ({ cat, spent: rows.find((r) => r.category === cat)?.cents || 0, limit: state.limits[cat] || 0 }))
     .filter((b) => b.spent > b.limit);
-  const saveRate = totals.income > 0 ? 100 * totals.saving / totals.income : 0;
   const days = dailySpending(state.transactions);
   const biggestDay = days.reduce((a, b) => (b.cents > a.cents ? b : a), days[0]);
   const quietDays = days.filter((d) => d.cents === 0).length;
@@ -335,7 +355,9 @@ function pageInsights(state) {
       ? `<b>${esc(over[0].cat)}</b> ran ${money(over[0].spent - over[0].limit)} over its ${money(over[0].limit)} limit. A single big purchase did it — worth a pause before the next one, not a smaller grocery run.`
       : `No budget is over its limit this month — every category is inside its plan.`,
     `November spending is ${changeLabel(totals.spending, oct.spending)} against October while income is ${changeLabel(totals.income, oct.income)}. The household kept ${money(totals.remaining)} unspent — that is the buffer for December.`,
-    `The savings rate is ${saveRate.toFixed(1)}% of income (${money(totals.saving)} of ${money(totals.income)}). Lifting it to 15% would mean setting aside about ${money(Math.round(totals.income * 0.15) - totals.saving)} more a month.`,
+    sr.rate >= sr.targetRate
+      ? `The savings rate is ${sr.rate.toFixed(1)}% of income (${money(totals.saving)} of ${money(totals.income)}) — above the ${sr.targetRate}% target, nicely done.`
+      : `The savings rate is ${sr.rate.toFixed(1)}% of income (${money(totals.saving)} of ${money(totals.income)}). Lifting it to ${sr.targetRate}% would mean setting aside about ${money(sr.short)} more a month.`,
   ];
   return `
   <section class="panel">
@@ -373,9 +395,15 @@ function pageInsights(state) {
     </section>
   </div>
   <section class="panel">
+    <h2>Keep a copy</h2>
+    <p>Take November with you — totals, every budget against its limit, every goal with its finish date, and the savings rate, as one plain-text file.</p>
+    <button class="btn" id="report-download">Download the November report</button>
+    <p class="muted" id="report-msg" aria-live="polite"></p>
+  </section>
+  <section class="panel">
     <h2>Demo data</h2>
     <p>This site ships with the Chen household's November as demo data. Everything you change is saved on this device only.</p>
     <button class="btn danger" id="reset-demo">Reset demo data</button>
-    <p class="muted" id="reset-msg"></p>
+    <p class="muted" id="reset-msg" aria-live="polite"></p>
   </section>`;
 }

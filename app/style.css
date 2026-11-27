@@ -26,6 +26,12 @@ body {
   line-height: 1.55;
 }
 a { color: var(--pine); }
+/* Keyboard focus must be visible, not just the browser default: the
+   amber ring matches the site and shows on every control. */
+:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+/* Search matches in the transaction list read as highlights, not as
+   retyped text. */
+mark { background: var(--amber-soft); color: inherit; border-radius: 3px; padding: 0 1px; }
 h1, h2, h3 { font-family: var(--serif); color: var(--pine-dark); line-height: 1.2; margin: 0 0 12px; }
 h1 { font-size: 30px; }
 h2 { font-size: 22px; }
