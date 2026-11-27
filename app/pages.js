@@ -127,10 +127,10 @@ function pageDashboard(state) {
   <div class="two-col">
     <section class="panel">
       <h2>Recent activity</h2>
-      <ul class="activity">
+      ${recent.length ? `<ul class="activity">
         ${recent.map((tx) => `<li><span class="act-date">${esc(tx.date.slice(5))}</span><span class="act-note">${esc(tx.note)}</span><span class="act-cat">${esc(tx.category)}</span><b class="amt-${tx.kind}">${tx.kind === "income" ? "+" : "−"}${money(tx.cents)}</b></li>`).join("")}
       </ul>
-      <p><a href="#/transactions">All ${state.transactions.length} transactions &rarr;</a></p>
+      <p><a href="#/transactions">All ${state.transactions.length} transactions &rarr;</a></p>` : `<p class="muted">No transactions yet — add your first one from the Transactions page.</p>`}
     </section>
     <section class="panel">
       <h2>Savings goals</h2>
@@ -200,6 +200,9 @@ function pageTransactions(state, ui) {
       <label>Category <select id="tx-category">${formCats.map((c) => `<option>${esc(c)}</option>`).join("")}</select></label>
       <label>Note <input id="tx-note" type="text" list="tx-note-list" placeholder="What was it for?" maxlength="80" required><datalist id="tx-note-list">${noteSuggestions(state, ui.formKind || "spending", formCats[0] || "").map((n) => `<option value="${esc(n)}">`).join("")}</datalist></label>
       <label>Amount ($) <input id="tx-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
+      <div class="quick-amounts"><span class="muted">Quick amounts:</span>
+        ${[5, 10, 20, 50].map((n) => `<button class="quick-amt" type="button" data-dollars="${n}">$${n}</button>`).join("")}
+      </div>
       <button class="btn" id="tx-submit" type="submit">Add transaction</button>
     </form>
     <p class="muted" id="tx-msg" aria-live="polite"></p>
@@ -392,7 +395,9 @@ function pageInsights(state) {
       ? `Above the ${sr.targetRate}% target — ${money(sr.saving)} of ${money(sr.income)} went to savings, nicely done.`
       : `${money(sr.saving)} of ${money(sr.income)} went to savings. Setting aside ${money(sr.short)} more a month would reach ${sr.targetRate}%.`;
   const tips = [
-    `<b>${esc(top.category)}</b> is the biggest slice of November spending at ${money(top.cents)} (${pctOf(top.cents, totals.spending)} of all spending). Rent and groceries are mostly fixed — the flexible money sits in dining, entertainment and shopping.`,
+    totals.spending <= 0
+      ? `No spending yet this month — add a transaction and the tips will follow your own numbers.`
+      : `<b>${esc(top.category)}</b> is the biggest slice of November spending at ${money(top.cents)} (${pctOf(top.cents, totals.spending)} of all spending). Rent and groceries are mostly fixed — the flexible money sits in dining, entertainment and shopping.`,
     over.length
       ? `<b>${esc(over[0].cat)}</b> ran ${money(over[0].spent - over[0].limit)} over its ${money(over[0].limit)} limit. A single big purchase did it — worth a pause before the next one, not a smaller grocery run.`
       : `No budget is over its limit this month — every category is inside its plan.`,
@@ -464,6 +469,12 @@ function pageInsights(state) {
     <p>Take November with you — totals, every budget against its limit, every goal with its finish date, and the savings rate, as one plain-text file.</p>
     <button class="btn" id="report-download">Download the November report</button>
     <p class="muted" id="report-msg" aria-live="polite"></p>
+  </section>
+  <section class="panel">
+    <h2>Back up your data</h2>
+    <p>A backup holds everything — every transaction, every limit and every goal — as one JSON file you can keep or bring back later. The CSV download only ever carried the transactions; this is the copy that actually restores the household.</p>
+    <p><button class="btn" id="backup-download">Download a backup</button> <label class="btn small import-label" for="backup-restore">Restore from a backup…</label><input id="backup-restore" type="file" accept=".json,application/json" hidden></p>
+    <p class="muted" id="backup-msg" aria-live="polite"></p>
   </section>
   <section class="panel">
     <h2>Demo data</h2>

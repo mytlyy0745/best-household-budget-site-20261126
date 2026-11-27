@@ -273,6 +273,28 @@ h2 { font-size: 22px; }
 .edit-actions { display: flex; gap: 8px; }
 .btn.ghost-dark { background: transparent; color: var(--pine); border: 1px solid var(--line); }
 
+/* Quick amounts on the add-transaction form: one tap fills the
+   amount field, and the field stays editable afterwards. */
+.quick-amounts {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.quick-amt {
+  background: #fff;
+  border: 1px solid #c9bd9c;
+  border-radius: 20px;
+  color: var(--pine-dark);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 5px 14px;
+}
+.quick-amt:hover { border-color: var(--amber); background: var(--amber-soft); }
+
 /* Forms */
 .form-grid {
   display: grid;

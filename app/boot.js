@@ -94,6 +94,15 @@ function bindPage(route) {
     document.getElementById("tx-category").addEventListener("change", (ev) => {
       refreshNoteList("tx-note-list", document.getElementById("tx-type").value, ev.target.value);
     });
+    // Quick amounts: one tap fills the amount field — a $10 top-up or
+    // a $20 shop is a tap, not a typed number. The field stays
+    // editable, so a chip is a starting point, not a verdict.
+    document.querySelectorAll(".quick-amt").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.getElementById("tx-amount").value = btn.getAttribute("data-dollars");
+        document.getElementById("tx-amount").focus();
+      });
+    });
     document.getElementById("tx-form").addEventListener("submit", (ev) => {
       ev.preventDefault();
       const cents = dollarsToCents(document.getElementById("tx-amount").value);
@@ -302,6 +311,40 @@ function bindPage(route) {
   }
 
   if (route === "insights") {
+    const backupBtn = document.getElementById("backup-download");
+    if (backupBtn) {
+      backupBtn.addEventListener("click", () => {
+        const name = `nest-egg-backup-${demoDateString(nestState)}.json`;
+        downloadText(name, JSON.stringify(backupData(nestState), null, 2), "application/json;charset=utf-8");
+        document.getElementById("backup-msg").textContent = "Backup downloaded — every transaction, limit and goal, as one JSON file.";
+      });
+    }
+    const restoreInput = document.getElementById("backup-restore");
+    if (restoreInput) {
+      restoreInput.addEventListener("change", () => {
+        const file = restoreInput.files && restoreInput.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const parsed = parseBackup(String(reader.result || ""));
+          if (!parsed.ok) {
+            // Nothing changes on a bad file: the household keeps
+            // exactly what it had, and the message says what was
+            // wrong with the file instead of a bare "failed".
+            document.getElementById("backup-msg").textContent = `Could not restore: ${parsed.error} Nothing changed.`;
+            return;
+          }
+          nestState = parsed.state;
+          saveState(nestState);
+          nestUi.type = ""; nestUi.cat = ""; nestUi.q = ""; nestUi.editingId = "";
+          const n = parsed.state.transactions.length;
+          const g = parsed.state.goals.length;
+          render();
+          document.getElementById("backup-msg").textContent = `Restored ${n} transaction${n === 1 ? "" : "s"}, ${g} goal${g === 1 ? "" : "s"} and all nine budget limits.`;
+        };
+        reader.readAsText(file);
+      });
+    }
     const reportBtn = document.getElementById("report-download");
     if (reportBtn) {
       reportBtn.addEventListener("click", () => {

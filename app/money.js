@@ -878,6 +878,126 @@ function createGoal(state, name, targetCents, startCents) {
   return goal;
 }
 
+/* ---- Full backup and restore (JSON) ---- */
+
+/* The whole household as one plain object: every transaction, every
+   limit and every goal. The CSV export only ever carried the
+   transactions — a limit change or a new goal was lost with the
+   browser — so this is the copy that actually brings the household
+   back. The file is dated on the demo day, like everything else. */
+function backupData(state) {
+  return {
+    app: "nest-egg",
+    version: 1,
+    month: NEST_SEED.month,
+    exported: demoDateString(state),
+    transactions: state.transactions,
+    limits: state.limits,
+    goals: state.goals,
+  };
+}
+
+/* Read a backup file back in. Strict on purpose, and all-or-nothing:
+   one bad row rejects the whole file instead of restoring half a
+   household, and the error names the first thing wrong so the file
+   can be fixed instead of guessed at. Returns { ok: true, state } or
+   { ok: false, error }. A file that is valid JSON but not a backup —
+   a CSV saved with the wrong extension, a report — is refused with
+   its own words, not a crash. */
+function parseBackup(text) {
+  let data;
+  try {
+    data = JSON.parse(String(text == null ? "" : text));
+  } catch (err) {
+    return { ok: false, error: "That file is not valid JSON." };
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return { ok: false, error: "That file is not a Nest Egg backup." };
+  }
+  if (data.app !== undefined && data.app !== "nest-egg") {
+    return { ok: false, error: `That file is not a Nest Egg backup — it says it is from "${data.app}".` };
+  }
+  if (!Array.isArray(data.transactions)) {
+    return { ok: false, error: "The backup has no transaction list." };
+  }
+  if (!data.limits || typeof data.limits !== "object" || Array.isArray(data.limits)) {
+    return { ok: false, error: "The backup has no budget limits." };
+  }
+  if (!Array.isArray(data.goals)) {
+    return { ok: false, error: "The backup has no goals list." };
+  }
+  for (const cat of NEST_SEED.spendCategories) {
+    const v = data.limits[cat];
+    if (!Number.isInteger(v) || v < 0) {
+      return { ok: false, error: `The backup has no usable limit for ${cat}.` };
+    }
+  }
+  const goals = [];
+  const goalNames = new Set();
+  for (let i = 0; i < data.goals.length; i++) {
+    const g = data.goals[i];
+    if (!g || typeof g !== "object") {
+      return { ok: false, error: `Goal ${i + 1} in the backup is not an object.` };
+    }
+    if (typeof g.id !== "string" || !g.id) {
+      return { ok: false, error: `Goal ${i + 1} in the backup has no id.` };
+    }
+    if (typeof g.name !== "string" || !g.name.trim()) {
+      return { ok: false, error: `Goal ${i + 1} in the backup has no name.` };
+    }
+    if (goalNames.has(g.name)) {
+      return { ok: false, error: `The backup has two goals called "${g.name}".` };
+    }
+    goalNames.add(g.name);
+    if (!Number.isInteger(g.target) || g.target <= 0) {
+      return { ok: false, error: `Goal "${g.name}" in the backup has no usable target.` };
+    }
+    if (!Number.isInteger(g.saved) || g.saved < 0) {
+      return { ok: false, error: `Goal "${g.name}" in the backup has no usable saved amount.` };
+    }
+    goals.push({ id: g.id, name: g.name, saved: g.saved, target: g.target, note: typeof g.note === "string" ? g.note : "" });
+  }
+  const kinds = ["income", "spending", "saving"];
+  const seenIds = new Set();
+  const transactions = [];
+  for (let i = 0; i < data.transactions.length; i++) {
+    const tx = data.transactions[i];
+    const where = `Transaction ${i + 1} in the backup`;
+    if (!tx || typeof tx !== "object") {
+      return { ok: false, error: `${where} is not an object.` };
+    }
+    if (typeof tx.id !== "string" || !tx.id) {
+      return { ok: false, error: `${where} has no id.` };
+    }
+    if (seenIds.has(tx.id)) {
+      return { ok: false, error: `Two transactions in the backup share the id "${tx.id}".` };
+    }
+    seenIds.add(tx.id);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(tx.date || "")) || !isRealDate(tx.date)) {
+      return { ok: false, error: `${where} has a bad date ("${tx.date}").` };
+    }
+    if (!kinds.includes(tx.kind)) {
+      return { ok: false, error: `${where} has an unknown type ("${tx.kind}").` };
+    }
+    const allowed = tx.kind === "saving" ? [...goalNames]
+      : tx.kind === "income" ? NEST_SEED.incomeCategories
+      : NEST_SEED.spendCategories;
+    if (!allowed.includes(tx.category)) {
+      return { ok: false, error: `${where} has an unknown category ("${tx.category}") for ${tx.kind}.` };
+    }
+    if (typeof tx.note !== "string") {
+      return { ok: false, error: `${where} has no note.` };
+    }
+    if (!Number.isInteger(tx.cents) || tx.cents <= 0) {
+      return { ok: false, error: `${where} has no usable amount.` };
+    }
+    transactions.push({ id: tx.id, date: tx.date, kind: tx.kind, category: tx.category, note: tx.note, cents: tx.cents });
+  }
+  const limits = {};
+  for (const cat of NEST_SEED.spendCategories) limits[cat] = data.limits[cat];
+  return { ok: true, state: { transactions, limits, goals } };
+}
+
 /* The month as a plain-text report the household can keep: totals,
    every budget against its limit, every goal with its pace and finish
    date, the savings rate, and the two lines that matter most — what is
