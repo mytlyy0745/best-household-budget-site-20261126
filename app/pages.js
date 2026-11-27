@@ -15,7 +15,10 @@ function statusPill(status) {
 }
 
 function progressBar(percent, tone) {
-  const p = Math.max(0, Math.min(100, percent));
+  // A limit of $0 with nothing spent is 0/0 — without this guard the
+  // width renders as NaN% and the bar silently disappears. Infinity
+  // (spent against a $0 limit) still clamps to a full bar.
+  const p = Number.isNaN(percent) ? 0 : Math.max(0, Math.min(100, percent));
   return `<div class="bar"><div class="bar-fill ${tone || ""}" style="width:${p.toFixed(1)}%"></div></div>`;
 }
 
@@ -314,6 +317,18 @@ function pageInsights(state) {
     .map((cat) => ({ cat, spent: rows.find((r) => r.category === cat)?.cents || 0, limit: state.limits[cat] || 0 }))
     .filter((b) => b.spent > b.limit);
   const saveRate = totals.income > 0 ? 100 * totals.saving / totals.income : 0;
+  const days = dailySpending(state.transactions);
+  const biggestDay = days.reduce((a, b) => (b.cents > a.cents ? b : a), days[0]);
+  const quietDays = days.filter((d) => d.cents === 0).length;
+  const dayNote = biggestDay.cents > 0
+    ? `The biggest day was Nov ${biggestDay.day} at ${money(biggestDay.cents)}${biggestDay.day === 1 ? " — rent day, so it always leads" : ""}. ${quietDays} of the 30 days had no spending at all.`
+    : "No spending yet this month — every day is still at zero.";
+  const sr = savingsRate(state);
+  const gaugeNote = totals.income <= 0
+    ? "No income this month, so there is no savings rate to show yet."
+    : sr.rate >= sr.targetRate
+      ? `Above the ${sr.targetRate}% target — ${money(sr.saving)} of ${money(sr.income)} went to savings, nicely done.`
+      : `${money(sr.saving)} of ${money(sr.income)} went to savings. Setting aside ${money(sr.short)} more a month would reach ${sr.targetRate}%.`;
   const tips = [
     `<b>${esc(top.category)}</b> is the biggest slice of November spending at ${money(top.cents)} (${pctOf(top.cents, totals.spending)} of all spending). Rent and groceries are mostly fixed — the flexible money sits in dining, entertainment and shopping.`,
     over.length
@@ -332,6 +347,18 @@ function pageInsights(state) {
     <h2>Spending by week</h2>
     ${weekBars(weeks)}
     <p class="muted">${weekNote}</p>
+  </section>
+  <section class="panel">
+    <h2>Spending by day</h2>
+    ${dayBars(days)}
+    <p class="muted">${dayNote}</p>
+  </section>
+  <section class="panel">
+    <h2>Savings rate</h2>
+    <div class="gauge-wrap">
+      ${savingsGauge(sr.rate, sr.targetRate)}
+      <p class="gauge-note">${gaugeNote}</p>
+    </div>
   </section>
   <div class="two-col">
     <section class="panel">

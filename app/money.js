@@ -197,6 +197,45 @@ function weeklySpending(list) {
   return weeks;
 }
 
+/* Spending on each day of the seed month, day 1 to the last day —
+   a day with no spending stays at zero, so the quiet days show too.
+   Transactions dated outside the month are ignored here: this chart
+   is the month, day by day. */
+function dailySpending(list) {
+  const parts = NEST_SEED.month.split("-").map(Number);
+  const last = daysInMonth(parts[0], parts[1]);
+  const days = [];
+  for (let d = 1; d <= last; d++) days.push({ day: d, cents: 0 });
+  const prefix = NEST_SEED.month + "-";
+  for (const tx of list) {
+    if (tx.kind !== "spending") continue;
+    if (!String(tx.date || "").startsWith(prefix)) continue;
+    const day = parseInt(tx.date.slice(8, 10), 10);
+    if (day >= 1 && day <= last) days[day - 1].cents += tx.cents;
+  }
+  return days;
+}
+
+/* The savings rate as one plain object: the share of income saved,
+   what 15% would be, and how far short of it the household is. The
+   15% target is the one the Next moves panel already uses, so the
+   gauge and the advice can never disagree about the number. */
+const SAVINGS_TARGET_RATE = 15;
+
+function savingsRate(state) {
+  const totals = sumKinds(state.transactions);
+  const rate = totals.income > 0 ? 100 * totals.saving / totals.income : 0;
+  const targetCents = Math.round(totals.income * SAVINGS_TARGET_RATE / 100);
+  return {
+    income: totals.income,
+    saving: totals.saving,
+    rate,
+    targetRate: SAVINGS_TARGET_RATE,
+    targetCents,
+    short: Math.max(0, targetCents - totals.saving),
+  };
+}
+
 /* An ISO date as a short "Nov 28", built from its parts so no
    timezone can shift the day. */
 function monthDay(iso) {

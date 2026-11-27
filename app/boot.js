@@ -56,6 +56,19 @@ function bindPage(route) {
         render();
       });
     });
+    // Donut drill-down: tapping a slice or a legend row opens
+    // Transactions filtered to that spending category.
+    const drillDown = (cat) => {
+      if (!cat) return;
+      nestUi.type = "spending";
+      nestUi.cat = cat;
+      nestUi.q = "";
+      nestUi.editingId = "";
+      window.location.hash = "#/transactions";
+    };
+    document.querySelectorAll(".donut-seg, .legend-cat").forEach((el) => {
+      el.addEventListener("click", () => drillDown(el.getAttribute("data-cat")));
+    });
   }
 
   if (route === "transactions") {
