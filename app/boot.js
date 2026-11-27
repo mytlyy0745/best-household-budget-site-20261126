@@ -45,6 +45,16 @@ function dollarsToCents(value) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+/* Rebuild a note datalist from the notes the household has already
+   used for this kind and category, so the suggestions always match
+   what the two selects currently say. */
+function refreshNoteList(listId, kind, category) {
+  const list = document.getElementById(listId);
+  if (!list) return;
+  list.innerHTML = noteSuggestions(nestState, kind, category)
+    .map((n) => `<option value="${esc(n)}">`).join("");
+}
+
 function bindPage(route) {
   if (route === "") {
     // Dashboard "Next moves": the one-click rebalance button performs
@@ -79,6 +89,10 @@ function bindPage(route) {
       const catSel = document.getElementById("tx-category");
       catSel.innerHTML = categoryOptions(nestUi.formKind, nestState)
         .map((c) => `<option>${esc(c)}</option>`).join("");
+      refreshNoteList("tx-note-list", nestUi.formKind, catSel.value);
+    });
+    document.getElementById("tx-category").addEventListener("change", (ev) => {
+      refreshNoteList("tx-note-list", document.getElementById("tx-type").value, ev.target.value);
     });
     document.getElementById("tx-form").addEventListener("submit", (ev) => {
       ev.preventDefault();
@@ -174,10 +188,14 @@ function bindPage(route) {
     const editForm = document.querySelector(".edit-grid");
     if (editForm) {
       const kindSel = editForm.querySelector('select[name="kind"]');
+      const catSel = editForm.querySelector('select[name="category"]');
       kindSel.addEventListener("change", () => {
-        const catSel = editForm.querySelector('select[name="category"]');
         catSel.innerHTML = categoryOptions(kindSel.value, nestState)
           .map((c) => `<option>${esc(c)}</option>`).join("");
+        refreshNoteList("edit-note-list", kindSel.value, catSel.value);
+      });
+      catSel.addEventListener("change", () => {
+        refreshNoteList("edit-note-list", kindSel.value, catSel.value);
       });
       editForm.querySelector(".edit-cancel").addEventListener("click", () => {
         nestUi.editingId = "";

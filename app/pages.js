@@ -160,7 +160,7 @@ function txEditRow(tx, state) {
         <option value="saving"${tx.kind === "saving" ? " selected" : ""}>Saving</option>
       </select></label>
       <label>Category <select name="category">${cats.map((c) => `<option${c === tx.category ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
-      <label>Note <input name="note" type="text" value="${esc(tx.note)}" maxlength="80" required></label>
+      <label>Note <input name="note" type="text" list="edit-note-list" value="${esc(tx.note)}" maxlength="80" required><datalist id="edit-note-list">${noteSuggestions(state, tx.kind, tx.category).map((n) => `<option value="${esc(n)}">`).join("")}</datalist></label>
       <label>Amount ($) <input name="amount" type="number" min="0.01" step="0.01" value="${(tx.cents / 100).toFixed(2)}" required></label>
       <span class="edit-actions"><button class="btn small" type="submit">Save</button> <button class="btn small ghost-dark edit-cancel" type="button">Cancel</button></span>
     </form>
@@ -185,7 +185,7 @@ function pageTransactions(state, ui) {
         </select>
       </label>
       <label>Category <select id="tx-category">${formCats.map((c) => `<option>${esc(c)}</option>`).join("")}</select></label>
-      <label>Note <input id="tx-note" type="text" placeholder="What was it for?" maxlength="80" required></label>
+      <label>Note <input id="tx-note" type="text" list="tx-note-list" placeholder="What was it for?" maxlength="80" required><datalist id="tx-note-list">${noteSuggestions(state, ui.formKind || "spending", formCats[0] || "").map((n) => `<option value="${esc(n)}">`).join("")}</datalist></label>
       <label>Amount ($) <input id="tx-amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
       <button class="btn" id="tx-submit" type="submit">Add transaction</button>
     </form>
@@ -299,6 +299,7 @@ function pageGoals(state) {
     ${state.goals.map((g) => {
       const proj = goalProjection(g, state);
       const plan = goalMonthlyPlan(g, state);
+      const ms = goalMilestones(g);
       const projLine = proj.monthsLeft === 0 ? "Target reached — well done."
         : proj.monthsLeft === null ? "Add funds to start the countdown."
         : `About ${proj.monthsLeft} month${proj.monthsLeft === 1 ? "" : "s"} to go at the current pace (${money(proj.pace)} a month) — around ${proj.finishLabel}.`;
@@ -307,6 +308,8 @@ function pageGoals(state) {
         <div class="snap-head"><span><b>${esc(g.name)}</b>${g.note ? ` <span class="muted">— ${esc(g.note)}</span>` : ""}</span><span id="goal-amt-${esc(g.id)}">${money(g.saved)} of ${money(g.target)}</span></div>
         ${progressBar(100 * g.saved / g.target, "goal")}
         <div class="snap-foot"><span>${pctOf(g.saved, g.target)} saved</span><span class="muted">${money(Math.max(0, g.target - g.saved))} to go</span></div>
+        <div class="goal-marks" aria-label="Milestones reached">${ms.marks.map((m) => `<span class="${m.hit ? "mark-hit" : ""}">${m.hit ? "✓ " : ""}${m.pct}%</span>`).join("")}</div>
+        <div class="goal-next">${esc(nextMilestoneLine(g))}</div>
         <div class="goal-proj" id="goal-proj-${esc(g.id)}">${projLine}</div>
         <div class="goal-plan" id="goal-plan-${esc(g.id)}">
           <div class="goal-plan-row"><span>Finish in 6 months</span><b>${money(plan.need6)} a month</b></div>
@@ -355,6 +358,8 @@ function pageInsights(state) {
   const sr = savingsRate(state);
   const inc = incomeByCategory(state.transactions);
   const topInc = inc[0] || { category: "—", cents: 0 };
+  const catCmp = categoryMonthComparison(state);
+  const cmpNote = categoryComparisonNote(catCmp);
   const incNote = totals.income <= 0
     ? "No income yet this month — add a salary, a refund or a gift and it shows up here."
     : inc.length === 1
@@ -380,6 +385,22 @@ function pageInsights(state) {
     <h1>Insights — November vs October</h1>
     ${monthBars(totals, oct)}
     <p class="muted">Income ${changeLabel(totals.income, oct.income)} · spending ${changeLabel(totals.spending, oct.spending)} · savings ${changeLabel(totals.saving, oct.saving)} against October (${money(oct.income)} / ${money(oct.spending)} / ${money(oct.saving)}).</p>
+  </section>
+  <section class="panel">
+    <h2>November vs October, by category</h2>
+    <table class="cmp-table">
+      <thead><tr><th>Category</th><th>November</th><th>October</th><th>Change</th></tr></thead>
+      <tbody>
+        ${catCmp.map((r) => {
+          const ch = r.change === null ? "new"
+            : r.change === 0 ? "same"
+            : changeLabel(r.nov, r.oct);
+          const cls = r.change === null || r.change === 0 ? "" : r.change > 0 ? "cmp-up" : "cmp-down";
+          return `<tr><td>${esc(r.cat)}</td><td>${money(r.nov)}</td><td>${money(r.oct)}</td><td class="${cls}">${ch}</td></tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    <p class="muted">${esc(cmpNote)}</p>
   </section>
   <section class="panel">
     <h2>Spending by week</h2>
@@ -408,9 +429,9 @@ function pageInsights(state) {
   <div class="two-col">
     <section class="panel">
       <h2>Biggest spending</h2>
-      <ol class="rank">
+      ${rows.length ? `<ol class="rank">
         ${rows.slice(0, 5).map((r, i) => `<li><span class="rank-pos">${i + 1}</span><span class="rank-cat">${esc(r.category)}</span><span class="rank-bar">${progressBar(100 * r.cents / rows[0].cents, "")}</span><b>${money(r.cents)}</b></li>`).join("")}
-      </ol>
+      </ol>` : `<p class="muted">No spending yet this month — add a transaction and it shows up here.</p>`}
     </section>
     <section class="panel">
       <h2>What the numbers say</h2>

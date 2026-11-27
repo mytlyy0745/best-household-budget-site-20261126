@@ -362,6 +362,97 @@ function goalProjection(goal, state) {
   return { pace, monthsLeft, finishLabel };
 }
 
+/* Milestones on the way to a goal: the 25/50/75/100% marks, which
+   are hit, and what the next one still needs. A goal that is only
+   46.7% saved has one milestone behind it and one $80.00 away — that
+   reads better than a bare percent. Hitting a mark exactly counts:
+   50.0% saved has the 50% milestone behind it. */
+function goalMilestones(goal) {
+  const marks = [25, 50, 75, 100];
+  const pct = goal.target > 0 ? 100 * goal.saved / goal.target : 0;
+  const next = marks.find((m) => pct < m);
+  return {
+    pct,
+    marks: marks.map((m) => ({ pct: m, hit: pct >= m })),
+    next: next === undefined ? null : {
+      pct: next,
+      cents: Math.ceil(goal.target * next / 100) - goal.saved,
+    },
+    done: next === undefined,
+  };
+}
+
+/* One line about the next milestone, or that they are all reached. */
+function nextMilestoneLine(goal) {
+  const ms = goalMilestones(goal);
+  if (ms.done) return "All four milestones reached — 25%, 50%, 75% and 100%.";
+  return `Next milestone: ${ms.next.pct}% — ${money(ms.next.cents)} more to go.`;
+}
+
+/* November against October, category by category: the totals panel
+   says spending fell 5.8%, but that hides that Shopping jumped while
+   Entertainment fell by a third. Sorted biggest rise first, so the
+   movers sit at the top and the bottom. A category with no October
+   figure and money this month is "new" (change null) and sorts first;
+   one with nothing either month is flat at 0%. Only the seed month
+   counts in the November column — a December transaction dated in
+   the same category must not move it. */
+function categoryMonthComparison(state) {
+  const prefix = NEST_SEED.month + "-";
+  const novByCat = new Map();
+  for (const tx of state.transactions) {
+    if (tx.kind !== "spending") continue;
+    if (!String(tx.date || "").startsWith(prefix)) continue;
+    novByCat.set(tx.category, (novByCat.get(tx.category) || 0) + tx.cents);
+  }
+  const out = NEST_SEED.spendCategories.map((cat) => {
+    const nov = novByCat.get(cat) || 0;
+    const oct = NEST_SEED.octoberByCategory[cat] || 0;
+    const change = oct > 0 ? 100 * (nov - oct) / oct : (nov > 0 ? null : 0);
+    return { cat, nov, oct, change };
+  });
+  out.sort((a, b) => (b.change === null ? Infinity : b.change) - (a.change === null ? Infinity : a.change));
+  return out;
+}
+
+/* The one-line summary of the category comparison: which category
+   moved most in each direction, in plain words. */
+function categoryComparisonNote(rows) {
+  const changed = rows.filter((r) => r.change !== null);
+  if (!changed.length) return "No October figures to compare against yet.";
+  const up = changed.filter((r) => r.change > 0);
+  const down = changed.filter((r) => r.change < 0);
+  const bits = [];
+  if (up.length) {
+    bits.push(`${up[0].cat} is up the most (${changeLabel(up[0].nov, up[0].oct)})`);
+  }
+  if (down.length) {
+    const bottom = down[down.length - 1];
+    bits.push(`${bottom.cat} is down the most (${changeLabel(bottom.nov, bottom.oct)})`);
+  }
+  if (!bits.length) return "Every category spent exactly what it did in October.";
+  return bits.join(" — ") + ".";
+}
+
+/* Notes the household has already used for this kind and category,
+   newest first — the add form offers them as you type, so "Weekly
+   shop — Green Mart" is one tap instead of retyping. Duplicates are
+   dropped, and the list is capped so a long ledger stays usable. */
+function noteSuggestions(state, kind, category) {
+  const seen = new Set();
+  const out = [];
+  const sorted = [...state.transactions]
+    .sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id));
+  for (const tx of sorted) {
+    if (tx.kind !== kind || tx.category !== category) continue;
+    if (seen.has(tx.note)) continue;
+    seen.add(tx.note);
+    out.push(tx.note);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 /* What a goal needs each month to finish on a schedule, not just at
    the pace the household happens to be saving now: the amount is
    rounded UP to the cent, so paying it every month really does cover
@@ -729,6 +820,14 @@ function monthReport(state) {
     const spent = rows.find((r) => r.category === cat)?.cents || 0;
     const limit = state.limits[cat] || 0;
     lines.push(`  ${cat}: ${money(spent)} of ${money(limit)} — ${budgetStatus(spent, limit)}`);
+  }
+  lines.push("");
+  lines.push("Spending vs October");
+  for (const r of categoryMonthComparison(state)) {
+    const ch = r.change === null ? "new this month"
+      : r.change === 0 ? "same as October"
+      : changeLabel(r.nov, r.oct);
+    lines.push(`  ${r.cat}: ${money(r.nov)} vs ${money(r.oct)} (${ch})`);
   }
   lines.push("");
   lines.push("Goals");

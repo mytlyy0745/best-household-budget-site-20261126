@@ -8,6 +8,20 @@ const NEST_SEED = {
   monthLabel: "November 2026",
   month: "2026-11",
   october: { income: 532101, spending: 261134, saving: 50000 },
+  /* October spending by category, for the category-by-category
+     comparison on Insights: the nine figures add up to the October
+     spending total above, so the two views can never disagree. */
+  octoberByCategory: {
+    Housing: 92000,
+    Groceries: 74250,
+    Dining: 16840,
+    Transport: 17420,
+    Utilities: 22150,
+    Entertainment: 9630,
+    Shopping: 13200,
+    Health: 11747,
+    Subscriptions: 3897,
+  },
   spendCategories: [
     "Housing",
     "Groceries",

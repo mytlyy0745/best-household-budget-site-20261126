@@ -330,6 +330,23 @@ input, select {
 .goal-plan-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 2px 0; }
 .goal-plan-line { font-size: 13px; color: var(--muted); margin-top: 6px; }
 
+/* Goal milestones: the 25/50/75/100% marks under each goal's bar —
+   reached ones in green with a tick, the next one named just below. */
+.goal-marks { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.goal-marks .mark-hit { color: var(--green); font-weight: 700; }
+.goal-next { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+/* Category comparison table on Insights: real tabular data, so a
+   table — numbers right-aligned, a rise in spending in red, a fall
+   in green. */
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.cmp-table th, .cmp-table td { padding: 7px 4px; border-bottom: 1px solid #eee6cf; text-align: right; }
+.cmp-table th:first-child, .cmp-table td:first-child { text-align: left; }
+.cmp-table th { font-size: 13px; color: var(--muted); }
+.cmp-table tr:last-child td { border-bottom: none; }
+.cmp-up { color: var(--red); font-weight: 700; }
+.cmp-down { color: var(--green); font-weight: 700; }
+
 /* Day groups in the transaction list: one header per day with its
    own subtotal, so a day's money is visible without adding it up. */
 .tx-day {
