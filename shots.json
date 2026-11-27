@@ -1,32 +1,32 @@
 {
   "shots": [
     {
-      "bytes": 80708,
       "file": "1-dashboard.jpg",
-      "height": 720,
       "view": "dashboard",
-      "width": 1280
+      "width": 1280,
+      "height": 720,
+      "bytes": 81785
     },
     {
-      "bytes": 63366,
       "file": "2-transactions.jpg",
-      "height": 720,
       "view": "transactions",
-      "width": 1280
-    },
-    {
-      "bytes": 81822,
-      "file": "3-budgets.jpg",
+      "width": 1280,
       "height": 720,
-      "view": "budgets",
-      "width": 1280
+      "bytes": 65344
     },
     {
-      "bytes": 41254,
+      "file": "3-budgets.jpg",
+      "view": "budgets",
+      "width": 1280,
+      "height": 720,
+      "bytes": 83333
+    },
+    {
       "file": "4-dashboard-phone.jpg",
-      "height": 844,
       "view": "dashboard",
-      "width": 390
+      "width": 390,
+      "height": 844,
+      "bytes": 40644
     }
   ]
 }

@@ -5,6 +5,8 @@
 
 let nestState = loadState();
 const nestUi = { type: "", cat: "", q: "", formKind: "spending", editingId: "" };
+let nestResetArmed = false;
+let nestResetTimer = null;
 
 /* Offer a text file as a download without any server round-trip. */
 function downloadText(filename, text, mime) {
@@ -190,6 +192,9 @@ function bindPage(route) {
           let added = 0;
           for (const row of parsed.rows) { addTransaction(nestState, row); added++; }
           let text = `Imported ${added} transaction${added === 1 ? "" : "s"}.`;
+          if (parsed.duplicates.length) {
+            text += ` ${parsed.duplicates.length} row${parsed.duplicates.length === 1 ? "" : "s"} ${parsed.duplicates.length === 1 ? "was" : "were"} already in the ledger — skipped.`;
+          }
           if (parsed.errors.length) {
             const shown = parsed.errors.slice(0, 2).map((e) => `line ${e.line}: ${e.reason}`).join("; ");
             text += ` ${parsed.errors.length} row${parsed.errors.length === 1 ? "" : "s"} skipped (${shown}${parsed.errors.length > 2 ? ", …" : ""}).`;
@@ -352,7 +357,27 @@ function bindPage(route) {
         document.getElementById("report-msg").textContent = "Report downloaded — totals, budgets, goals and the savings rate, as one text file.";
       });
     }
-    document.getElementById("reset-demo").addEventListener("click", () => {
+    document.getElementById("reset-demo").addEventListener("click", (ev) => {
+      // Resetting wipes every change the household made, so one click
+      // only arms it: the button says what the second click will do,
+      // and the arm wears off after a few seconds, so a stray click
+      // can never empty the ledger by accident.
+      const btn = ev.currentTarget;
+      if (!nestResetArmed) {
+        nestResetArmed = true;
+        btn.textContent = "Click again to reset everything";
+        document.getElementById("reset-msg").textContent = "This erases every change and restores the November seed. Click the button again to confirm.";
+        nestResetTimer = setTimeout(() => {
+          nestResetArmed = false;
+          const b = document.getElementById("reset-demo");
+          if (b) b.textContent = "Reset demo data";
+          const m = document.getElementById("reset-msg");
+          if (m) m.textContent = "";
+        }, 6000);
+        return;
+      }
+      clearTimeout(nestResetTimer);
+      nestResetArmed = false;
       nestState = resetState();
       nestUi.type = ""; nestUi.cat = ""; nestUi.q = "";
       render();
@@ -363,6 +388,25 @@ function bindPage(route) {
 
 window.addEventListener("hashchange", render);
 render();
+
+/* Colour theme: the toggle in the top bar flips the data-theme
+   attribute the stylesheet keys off, saves the choice on this device,
+   and always names the other mode — so the button says what it will
+   do next, not what is already on. The first paint already picked a
+   theme (saved choice, else the device's preference); this just keeps
+   the button's label honest and makes the flip stick. */
+const nestThemeBtn = document.getElementById("theme-toggle");
+function nestApplyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  try { window.localStorage.setItem("nest-egg-theme", theme); } catch (err) { /* no storage — the flip still works for this visit */ }
+  if (nestThemeBtn) nestThemeBtn.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+}
+if (nestThemeBtn) {
+  nestApplyTheme(document.documentElement.getAttribute("data-theme") || "light");
+  nestThemeBtn.addEventListener("click", () => {
+    nestApplyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  });
+}
 
 /* Keyboard shortcuts, for the household that lives in this site:
    1–5 switch pages, / jumps to the transaction search, n starts a

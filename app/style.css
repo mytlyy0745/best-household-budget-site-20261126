@@ -418,15 +418,131 @@ input, select {
   .tx-date { min-width: 0; }
 }
 
+/* Dark mode: the toggle in the top bar flips data-theme on <html>,
+   and everything below keys off it. The palette is the same pine /
+   cream / amber idea, darkened — the page, the cards and the ink swap,
+   while the hero, the top bar and the dark Remaining card keep their
+   original deep green, so they never turn into light boxes on a dark
+   page. Pills and the bar track get their own dark values because the
+   light chips would glare. */
+.theme-toggle {
+  margin-left: auto;
+  background: transparent;
+  color: #cfe3d4;
+  border: 1px solid #7ba08a;
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.theme-toggle:hover { background: rgba(255,255,255,0.12); color: #fff; }
+html[data-theme="dark"] {
+  --cream: #17211b;
+  --card: #212e26;
+  --ink: #e9ede7;
+  --muted: #a6b3a8;
+  --line: #3a4a3f;
+  --amber: #e2a92e;
+  --amber-soft: #54431c;
+  --red: #e07a63;
+  --green: #7cc79a;
+  --pine: #5da987;
+  --pine-soft: #6fae8d;
+}
+html[data-theme="dark"] h1, html[data-theme="dark"] h2, html[data-theme="dark"] h3 { color: #dceadf; }
+html[data-theme="dark"] .brand { color: #f7f3e8; }
+html[data-theme="dark"] .hero { background: #1e4d3a; }
+html[data-theme="dark"] .hero h1 { color: #fff; }
+html[data-theme="dark"] .hero h1 span { color: #f3e2b8; }
+html[data-theme="dark"] .btn.ghost { color: #f7f3e8; }
+html[data-theme="dark"] .btn.ghost-dark { color: #dceadf; }
+html[data-theme="dark"] .stat strong,
+html[data-theme="dark"] .pace strong,
+html[data-theme="dark"] .days strong { color: #dceadf; }
+html[data-theme="dark"] .stat.highlight { background: #1e4d3a; border-color: #1e4d3a; }
+html[data-theme="dark"] .bar { background: #39473d; }
+html[data-theme="dark"] .move-box,
+html[data-theme="dark"] .save-card,
+html[data-theme="dark"] .goal-plan,
+html[data-theme="dark"] .tx-day { background: #2b3a30; }
+html[data-theme="dark"] input, html[data-theme="dark"] select { background: #2a3830; border-color: #4a5a4e; }
+html[data-theme="dark"] .quick-amt { background: #2a3830; border-color: #4a5a4e; }
+html[data-theme="dark"] .quick-amt:hover { background: #54431c; }
+html[data-theme="dark"] .pill { background: #33433a; color: #dceadf; }
+html[data-theme="dark"] .pill-almostthere { background: #4a3d1e; color: #f0cd7a; }
+html[data-theme="dark"] .pill-targetmet { background: #234534; color: #8fd6ab; }
+html[data-theme="dark"] .pill-overbudget { background: #4a2b26; color: #f09a86; }
+html[data-theme="dark"] .activity li,
+html[data-theme="dark"] .tx-list li,
+html[data-theme="dark"] .bills li,
+html[data-theme="dark"] .rank li,
+html[data-theme="dark"] .budget-row,
+html[data-theme="dark"] .goal-card,
+html[data-theme="dark"] .cmp-table th,
+html[data-theme="dark"] .cmp-table td { border-color: #3a4a3f; }
+html[data-theme="dark"] .donut-total,
+html[data-theme="dark"] .gauge-num,
+html[data-theme="dark"] .bar-val { fill: #dceadf; }
+html[data-theme="dark"] .tx-day-total { color: #dceadf; }
+/* The charts bake their pine green into SVG attributes, which would
+   sit too dark on a dark card: brighten the November bars, and give
+   the savings gauge a dark track with a brighter filled arc, so the
+   filled part reads as the value instead of the empty track. CSS
+   wins over a presentation attribute, so these selectors override
+   the colours draw.js writes. */
+html[data-theme="dark"] .bars rect[fill="#1e4d3a"] { fill: #5da987; }
+html[data-theme="dark"] .gauge path[stroke="#e7dfc6"] { stroke: #39473d; }
+html[data-theme="dark"] .gauge path[stroke="#1e4d3a"] { stroke: #5da987; }
+
 /* Print: the month on paper. Navigation, buttons and forms are
    controls, not content, so they go; the dark hero and the dark
    Remaining card print as plain bordered boxes instead of solid ink;
    panels never split across a page break. */
 @media print {
+  /* A dark theme must not print dark: the variables go back to the
+     light palette, and the few dark-only element rules are undone
+     below, so the printout is the same on either theme. */
+  html[data-theme="dark"] {
+    --cream: #f7f3e8;
+    --card: #fffdf6;
+    --ink: #243126;
+    --muted: #6f7a6e;
+    --line: #ddd3b8;
+    --amber: #d9930d;
+    --amber-soft: #f3e2b8;
+    --red: #b3402e;
+    --green: #2e7d4f;
+    --pine: #1e4d3a;
+    --pine-soft: #2e6b4f;
+  }
+  html[data-theme="dark"] h1, html[data-theme="dark"] h2, html[data-theme="dark"] h3 { color: var(--pine-dark); }
+  html[data-theme="dark"] .hero { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  html[data-theme="dark"] .hero h1, html[data-theme="dark"] .hero h1 span { color: var(--pine-dark); }
+  html[data-theme="dark"] .stat strong,
+  html[data-theme="dark"] .pace strong,
+  html[data-theme="dark"] .days strong { color: var(--pine-dark); }
+  html[data-theme="dark"] .stat.highlight { background: #fff; border-color: var(--line); }
+  html[data-theme="dark"] .stat.highlight strong, html[data-theme="dark"] .stat.highlight .stat-label { color: var(--pine-dark); }
+  html[data-theme="dark"] .stat.highlight .muted { color: var(--muted); }
+  html[data-theme="dark"] .bar { background: #ece4cd; }
+  html[data-theme="dark"] .move-box,
+  html[data-theme="dark"] .save-card,
+  html[data-theme="dark"] .goal-plan,
+  html[data-theme="dark"] .tx-day { background: #f0ead6; }
+  html[data-theme="dark"] .pill { background: #e6ecdf; color: var(--pine-dark); }
+  html[data-theme="dark"] .pill-almostthere { background: #f7e3b0; color: #7a5200; }
+  html[data-theme="dark"] .pill-targetmet { background: #d5ead9; color: var(--green); }
+  html[data-theme="dark"] .pill-overbudget { background: #f6d7d2; color: var(--red); }
+  html[data-theme="dark"] .donut-total,
+  html[data-theme="dark"] .gauge-num,
+  html[data-theme="dark"] .bar-val { fill: var(--pine-dark); }
+  html[data-theme="dark"] .tx-day-total { color: var(--pine-dark); }
   body { background: #fff; }
   .topbar, .btn, .tx-del, .tx-edit-btn, form, .filters, .move-box,
   .fund-row, .donut-hint, .limit-edit, #report-download, #reset-demo,
-  .import-label, #tx-import { display: none !important; }
+  .import-label, #tx-import, .theme-toggle { display: none !important; }
   .hero { background: #fff; color: var(--ink); border: 1px solid var(--line); }
   .hero h1, .hero h1 span { color: var(--pine-dark); }
   .hero-sub { color: var(--muted); }

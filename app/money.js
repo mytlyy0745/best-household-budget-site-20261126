@@ -842,10 +842,18 @@ function isRealDate(iso) {
    one bad line never eats the good ones. Amounts carry the sign the
    export writes (income +, the rest −); the type column decides the
    kind, and the amount's size is what is stored. A leading $ and
-   thousands commas are forgiven. */
+   thousands commas are forgiven. A row that is already in the ledger
+   — same date, kind, category, note and amount — is counted in
+   duplicates and skipped, not added again: without this, importing
+   the file the site itself exported would double every transaction.
+   Rows added earlier in the same import count too, so a file that
+   lists one row twice only adds it once. */
 function parseTransactionsCSV(text, state) {
   const rows = [];
   const errors = [];
+  const duplicates = [];
+  const seen = new Set(
+    state.transactions.map((tx) => `${tx.date}|${tx.kind}|${tx.category}|${tx.note}|${tx.cents}`));
   const lines = String(text == null ? "" : text).split(/\r?\n/);
   let seenHeader = false;
   for (let ln = 0; ln < lines.length; ln++) {
@@ -865,9 +873,13 @@ function parseTransactionsCSV(text, state) {
     if (!note) { errors.push({ line: ln + 1, reason: "empty note" }); continue; }
     const amount = Number(amountRaw.replace(/^\$/, "").replace(/,/g, ""));
     if (!Number.isFinite(amount) || amount === 0) { errors.push({ line: ln + 1, reason: `bad amount "${amountRaw}"` }); continue; }
-    rows.push({ date, kind, category, note, cents: Math.round(Math.abs(amount) * 100) });
+    const cents = Math.round(Math.abs(amount) * 100);
+    const key = `${date}|${kind}|${category}|${note}|${cents}`;
+    if (seen.has(key)) { duplicates.push({ line: ln + 1 }); continue; }
+    seen.add(key);
+    rows.push({ date, kind, category, note, cents });
   }
-  return { rows, errors };
+  return { rows, errors, duplicates };
 }
 
 function createGoal(state, name, targetCents, startCents) {
